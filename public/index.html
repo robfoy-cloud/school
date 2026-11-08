@@ -161,6 +161,11 @@
   .status.none { color: var(--muted); }
   .empty { background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--muted); }
 
+  .no-contact { display: block; margin-top: 12px; font-size: 14px; }
+  .no-contact input { margin-right: 6px; }
+  .field:disabled { background: #faf9f5; color: var(--ink); }
+  .table a { color: var(--green); }
+
   /* Homework */
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
   .form-row { display: flex; gap: 12px; flex-wrap: wrap; }
@@ -413,7 +418,9 @@ async function loadForRole() {
   // Everyone else: whatever the database lets this person see
   const [pupils, classes, staff] = await Promise.all([
     sb.from('pupils_with_year')
-      .select('pupil_id, first_name, last_name, date_of_birth, year_offset, dob_year_group, year_group, class_id, photo_path')
+      .select('pupil_id, first_name, last_name, date_of_birth, year_offset, dob_year_group, year_group, class_id, photo_path, '
+        + 'contact_1, contact_1_relationship, contact_1_email, contact_1_phone, contact_1_no_contact, '
+        + 'contact_2, contact_2_relationship, contact_2_email, contact_2_phone, contact_2_no_contact')
       .order('last_name').order('first_name'),
     sb.from('classes')
       .select('class_id, year_group, class, name, staff_id, ta_staff_id, valid_to')
@@ -673,7 +680,7 @@ function renderAdmin() {
 
 /* Heads and deputies */
 function renderLeadership() {
-  const tabs = [['years', 'Year groups'], ['classes', 'Classes'], ['staff', 'Teachers & TAs'], ['people', 'Staff'], ['photos', 'Photos'], ['registers', 'Registers']];
+  const tabs = [['years', 'Year groups'], ['classes', 'Classes'], ['staff', 'Teachers & TAs'], ['pupils', 'Pupils'], ['people', 'Staff'], ['photos', 'Photos'], ['registers', 'Registers']];
   const inClass = state.pupils.filter((p) => p.class_id).length;
   const n = state.classes.length;
   const item = (label, a, b) => `<span class="${a === b ? 'done' : ''}">${label} <b>${a}/${b}</b></span>`;
@@ -685,8 +692,136 @@ function renderLeadership() {
       ${item('Classes with a TA', state.classes.filter((c) => c.ta_staff_id).length, n)}
     </div>
     <div id="view"></div>`;
-  $('app').querySelectorAll('.step').forEach((b) => b.addEventListener('click', () => { state.tab = b.dataset.tab; render(); }));
-  ({ years: renderYears, classes: renderClasses, staff: renderStaffAssign, people: renderPeople, photos: renderPhotos, registers: renderRegisters })[state.tab]();
+  $('app').querySelectorAll('.step').forEach((b) => b.addEventListener('click', () => { state.tab = b.dataset.tab; state.pupilEdit = null; render(); }));
+  ({ years: renderYears, classes: renderClasses, staff: renderStaffAssign, pupils: renderPupilsAdmin, people: renderPeople, photos: renderPhotos, registers: renderRegisters })[state.tab]();
+}
+
+/* ---------- Pupil details ---------- */
+
+function renderPupilsAdmin() {
+  if (state.pupilEdit) return renderPupilForm(true);
+  const q = (state.pupilSearch || '').toLowerCase();
+  const yf = state.pupilYear ?? 'all';
+  const list = state.pupils.filter((p) => (yf === 'all' || p.year_group === Number(yf))
+    && (!q || `${p.first_name} ${p.last_name}`.toLowerCase().includes(q)
+        || (p.contact_1 || '').toLowerCase().includes(q) || (p.contact_2 || '').toLowerCase().includes(q)));
+  const years = YEARS.filter((y) => state.pupils.some((p) => p.year_group === y));
+  $('view').innerHTML = `
+    <div class="toolbar">
+      <input class="field" id="pSearch" placeholder="Search pupils or contacts" value="${esc(state.pupilSearch || '')}" style="max-width:280px">
+      <button class="pill ${yf === 'all' ? 'active' : ''}" data-y="all">All</button>
+      ${years.map((y) => `<button class="pill ${String(yf) === String(y) ? 'active' : ''}" data-y="${y}">${yearLabel(y)}</button>`).join('')}
+      <span class="spacer"></span><button class="btn primary small" id="addPupil">Add pupil</button>
+    </div>
+    <table class="table"><tr><th>Pupil</th><th>Year</th><th>Class</th><th>Contacts</th></tr>
+      ${list.map((p) => `<tr class="clickable" data-pid="${p.pupil_id}">
+        <td><span class="who-cell">${avatar(p, 30)}${esc(pupilName(p))}</span></td>
+        <td>${yearLabel(p.year_group)}</td><td>${esc(classById(p.class_id)?.name ?? '')}</td>
+        <td>${[1, 2].map((n) => p[`contact_${n}`] ? `<div>${esc(p[`contact_${n}`])} <span class="hint">${esc(p[`contact_${n}_relationship`] || '')}</span>${p[`contact_${n}_no_contact`] ? ' <span class="tag red">don\'t contact</span>' : ''}</div>` : '').join('')}</td>
+      </tr>`).join('') || '<tr><td colspan="4" class="hint">No pupils match.</td></tr>'}
+    </table>`;
+  const s = $('pSearch');
+  s.addEventListener('input', () => { state.pupilSearch = s.value; const pos = s.selectionStart; render(); const n = $('pSearch'); n.focus(); n.setSelectionRange(pos, pos); });
+  document.querySelectorAll('[data-y]').forEach((b) => b.addEventListener('click', () => { state.pupilYear = b.dataset.y; render(); }));
+  document.querySelectorAll('tr[data-pid]').forEach((r) => r.addEventListener('click', () => { state.pupilEdit = Number(r.dataset.pid); render(); }));
+  $('addPupil').addEventListener('click', () => { state.pupilEdit = 'new'; render(); });
+}
+
+function contactFields(p, n, editable) {
+  const v = (k) => esc(p[`contact_${n}${k}`] ?? '');
+  const dis = editable ? '' : 'disabled';
+  return `<div class="panel">
+    <h4 style="margin-top:0">Contact ${n}</h4>
+    <div class="form-row">
+      <div><label class="f">Name</label><input class="field" name="contact_${n}" value="${v('')}" ${dis}></div>
+      <div><label class="f">Relationship</label><input class="field" name="contact_${n}_relationship" value="${v('_relationship')}" placeholder="e.g. Mother" ${dis}></div>
+    </div>
+    <div class="form-row">
+      <div><label class="f">Email</label><input class="field" type="email" name="contact_${n}_email" value="${v('_email')}" ${dis}></div>
+      <div><label class="f">Phone</label><input class="field" type="tel" name="contact_${n}_phone" value="${v('_phone')}" ${dis}></div>
+    </div>
+    <label class="no-contact"><input type="checkbox" name="contact_${n}_no_contact" ${p[`contact_${n}_no_contact`] ? 'checked' : ''} ${dis}>
+      Don't send homework or messages to this contact <span class="hint">(e.g. a court order or safeguarding concern)</span></label>
+  </div>`;
+}
+
+async function renderPupilForm(editable) {
+  const isNew = state.pupilEdit === 'new';
+  let p = { school_id: state.me.school_id, entry_date: new Date().toLocaleDateString('en-CA') };
+  if (!isNew) {
+    const r = await sb.from('pupils').select('*').eq('pupil_id', state.pupilEdit).single();
+    if (r.error) { toast(r.error.message, true); state.pupilEdit = null; return render(); }
+    p = r.data;
+  }
+  const dis = editable ? '' : 'disabled';
+  const yearNow = p.date_of_birth ? state.pupils.find((x) => x.pupil_id === p.pupil_id)?.year_group : null;
+  $('view').innerHTML = `
+    <p><button class="btn small" id="back">← Pupils</button></p>
+    <form id="pupilForm">
+      <div class="panel">
+        <div class="hw-top"><span class="who-cell">${isNew ? '' : avatar(p, 48)}<h3 style="margin:0">${isNew ? 'New pupil' : esc(pupilName(p))}</h3></span>
+          ${yearNow != null ? `<span class="tag green">${yearLabel(yearNow)}</span>` : ''}</div>
+        <div class="form-row" style="margin-top:8px">
+          <div><label class="f">First name</label><input class="field" name="first_name" value="${esc(p.first_name ?? '')}" required ${dis}></div>
+          <div><label class="f">Middle name</label><input class="field" name="middle_name" value="${esc(p.middle_name ?? '')}" ${dis}></div>
+          <div><label class="f">Last name</label><input class="field" name="last_name" value="${esc(p.last_name ?? '')}" required ${dis}></div>
+        </div>
+        <div class="form-row">
+          <div><label class="f">Date of birth</label><input class="field" type="date" name="date_of_birth" value="${p.date_of_birth ?? ''}" required ${dis}></div>
+          <div><label class="f">Started at school</label><input class="field" type="date" name="entry_date" value="${p.entry_date ?? ''}" ${dis}></div>
+          <div><label class="f">Left school</label><input class="field" type="date" name="leave_date" value="${p.leave_date ?? ''}" ${dis}></div>
+        </div>
+      </div>
+      <div class="two-col">${contactFields(p, 1, editable)}${contactFields(p, 2, editable)}</div>
+      ${editable ? `<div class="toolbar sticky-actions"><span class="spacer"></span>
+        <button class="btn" type="button" id="cancel">Cancel</button>
+        <button class="btn primary" type="submit">${isNew ? 'Add pupil' : 'Save changes'}</button></div>` : ''}
+    </form>`;
+
+  const back = () => { state.pupilEdit = null; render(); };
+  $('back').addEventListener('click', back);
+  $('cancel')?.addEventListener('click', back);
+  $('pupilForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const row = {};
+    for (const k of ['first_name', 'middle_name', 'last_name', 'date_of_birth', 'entry_date', 'leave_date',
+      'contact_1', 'contact_1_relationship', 'contact_1_email', 'contact_1_phone',
+      'contact_2', 'contact_2_relationship', 'contact_2_email', 'contact_2_phone']) row[k] = f[k].value.trim() || null;
+    row.contact_1_no_contact = f.contact_1_no_contact.checked;
+    row.contact_2_no_contact = f.contact_2_no_contact.checked;
+    for (const n of [1, 2]) {
+      const ph = row[`contact_${n}_phone`];
+      if (ph && !/^\+?[0-9 ()-]{7,20}$/.test(ph)) return toast(`Contact ${n}'s phone number doesn't look right`, true);
+      if (ph) row[`contact_${n}_phone`] = ph.replace(/[^\d+]/g, '');
+    }
+    const res = isNew
+      ? await sb.from('pupils').insert({ ...row, school_id: state.me.school_id }).select('pupil_id').single()
+      : await sb.from('pupils').update(row).eq('pupil_id', p.pupil_id);
+    if (res.error) return toast(res.error.message, true);
+    toast(isNew ? `${row.first_name} added` : 'Saved');
+    await loadForRole();
+    state.pupilEdit = null;
+    render();
+  });
+}
+
+function renderPupilsReadOnly(pupils) {
+  if (state.pupilEdit) return renderPupilForm(false);
+  $('view').innerHTML = `
+    <p class="hint">Contact details for your class. Ask the office or a head to change anything.</p>
+    <table class="table"><tr><th>Pupil</th><th>Contacts</th></tr>
+      ${pupils.map((p) => `<tr class="clickable" data-pid="${p.pupil_id}">
+        <td><span class="who-cell">${avatar(p, 34)}${esc(pupilName(p))}</span></td>
+        <td>${[1, 2].map((n) => p[`contact_${n}`] ? `<div>${esc(p[`contact_${n}`])} <span class="hint">${esc(p[`contact_${n}_relationship`] || '')}</span>
+          ${p[`contact_${n}_no_contact`] ? '<span class="tag red">don\'t contact</span>'
+            : `${p[`contact_${n}_phone`] ? ` · <a href="tel:${esc(p[`contact_${n}_phone`])}">${esc(p[`contact_${n}_phone`])}</a>` : ''}${p[`contact_${n}_email`] ? ` · <a href="mailto:${esc(p[`contact_${n}_email`])}">${esc(p[`contact_${n}_email`])}</a>` : ''}`}</div>` : '').join('')}</td>
+      </tr>`).join('')}
+    </table>`;
+  document.querySelectorAll('tr[data-pid]').forEach((r) => r.addEventListener('click', (e) => {
+    if (e.target.closest('a')) return;
+    state.pupilEdit = Number(r.dataset.pid); render();
+  }));
 }
 
 function renderPhotos() {
@@ -965,19 +1100,21 @@ function renderClassView() {
     return;
   }
 
-  const tabs = [['register', 'Register'], ['homework', 'Homework'], ['progress', 'Progress']];
+  const tabs = [['register', 'Register'], ['homework', 'Homework'], ['pupils', 'Pupils'], ['progress', 'Progress']];
   $('app').innerHTML = `${head}
     <nav class="steps">${tabs.map(([k, l]) => `<button class="step ${state.classTab === k ? 'active' : ''}" data-ct="${k}">${l}</button>`).join('')}</nav>
     <div id="view"></div>`;
   $('app').querySelectorAll('[data-ct]').forEach((b) => b.addEventListener('click', async () => {
     state.classTab = b.dataset.ct;
     state.hwView = null;
+    state.pupilEdit = null;
     if (state.classTab !== 'register') await loadHomework(c.class_id);
     render();
   }));
 
   if (state.classTab === 'homework') return renderHomework(c, pupils);
   if (state.classTab === 'progress') return renderProgress(c, pupils);
+  if (state.classTab === 'pupils') return renderPupilsReadOnly(pupils);
 
   const unmarked = pupils.filter((p) => !statusOf(p.pupil_id)).map((p) => p.pupil_id);
   $('view').innerHTML = `
