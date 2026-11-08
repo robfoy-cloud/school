@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Homework</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  :root { --bg: #f5f3ec; --panel: #fff; --ink: #1f2a24; --muted: #6b766f; --line: #e2ded2;
+    --green: #2f6b4f; --green-soft: #e3efe7; --red: #b4423a; --amber-soft: #fbf0dc; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 20px 18px 60px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  header img { width: 44px; height: 44px; border-radius: 10px; }
+  header .school { color: var(--muted); font-size: 14px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 14px; }
+  .note { background: var(--amber-soft); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+  .choices { display: grid; gap: 12px; }
+  .choice { text-align: left; background: var(--panel); border: 2px solid var(--line); border-radius: 14px; padding: 16px 18px; font: inherit; cursor: pointer; }
+  .choice:hover { border-color: var(--green); }
+  .choice b { display: block; font-size: 18px; margin-bottom: 2px; }
+  .choice span { color: var(--muted); font-size: 15px; }
+  .q { padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .q:last-child { border-bottom: none; }
+  .q label.p { display: block; font-weight: 500; margin-bottom: 8px; }
+  .q .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--green-soft); color: var(--green); font-size: 14px; font-weight: 600; margin-right: 8px; }
+  input[type=text] { width: 100%; max-width: 260px; padding: 12px 14px; font: inherit; font-size: 20px; border: 1.5px solid var(--line); border-radius: 10px; }
+  input[type=text]:focus { outline: none; border-color: var(--green); }
+  .opt { display: flex; align-items: center; gap: 10px; padding: 8px 0; font-size: 18px; }
+  .opt input { width: 22px; height: 22px; }
+  .btn { border: 1px solid var(--line); background: var(--panel); padding: 12px 20px; border-radius: 999px; font: inherit; cursor: pointer; color: inherit; }
+  .btn.primary { background: var(--green); border-color: var(--green); color: #fff; }
+  .btn:disabled { opacity: .5; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .previews { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+  .previews img { height: 120px; border-radius: 8px; border: 1px solid var(--line); }
+  .previews .pdf { height: 120px; width: 90px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #fafafa; font-size: 13px; }
+  .done { text-align: center; padding: 30px 18px; }
+  .done .big { font-size: 54px; }
+  .error { color: var(--red); margin-top: 10px; }
+  .hint { color: var(--muted); font-size: 14px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main id="main"><p class="hint">Loading…</p></main>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+const sb = createClient('https://veoxasldburbztzucyrn.supabase.co', 'sb_publishable_Gwnaqzgzz-Abvn5hiQvhsw_32P5goIo',
+  { auth: { persistSession: false, autoRefreshToken: false } });
+
+const token = new URLSearchParams(location.search).get('t') || '';
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '');
+let hw = null;
+let files = [];
+
+function header() {
+  return `<header><img src="/icon.svg" alt=""><div><div class="school">${esc(hw.school_name || '')}</div>
+    <div><b>${esc(hw.class_name || '')}</b></div></div></header>
+    <h1>${esc(hw.title)}</h1>
+    <p class="sub">Homework for <b>${esc(hw.first_name)}</b>${hw.due_date ? ` · due ${fmtDate(hw.due_date)}` : ''}</p>`;
+}
+
+async function load() {
+  if (!/^[0-9a-f-]{36}$/i.test(token)) return showError();
+  const { data, error } = await sb.rpc('homework_by_token', { p_token: token });
+  if (error || !data) return showError();
+  hw = data;
+  home();
+}
+
+function showError() {
+  $('main').innerHTML = `<div class="card done"><div class="big">🔗</div><h1>Link not recognised</h1>
+    <p class="sub">Please check you copied the whole link, or scan the code on the homework sheet again.</p></div>`;
+}
+
+function home() {
+  if (!hw.open) {
+    $('main').innerHTML = header() + `<div class="card done"><div class="big">${hw.status === 'sent' ? '🔒' : '✅'}</div>
+      <h1>${hw.status === 'sent' ? 'This homework is closed' : 'Homework received'}</h1>
+      <p class="sub">${hw.status === 'sent' ? 'It can no longer be handed in online. Please speak to the class teacher.' : 'Thank you. The teacher has it now.'}</p></div>`;
+    return;
+  }
+  $('main').innerHTML = header() + `
+    ${hw.status === 'submitted' ? `<div class="note">✅ We've received this homework. You can send it again until the teacher marks it, and the new version will replace the old one.</div>` : ''}
+    ${hw.instructions ? `<div class="card">${esc(hw.instructions)}</div>` : ''}
+    <div class="choices">
+      <button class="choice" id="goOnline"><b>✏️ Answer on this device</b><span>Type the answers to ${hw.questions.length} questions here.</span></button>
+      <button class="choice" id="goPhoto"><b>📷 Send photos of the paper sheet</b><span>Done it on paper? Take a photo of each page, or upload a scan.</span></button>
+    </div>
+    <p class="hint" style="margin-top:18px">Please let ${esc(hw.first_name)} try the questions on their own first. It's fine to get some wrong. It helps the teacher know what to teach next.</p>`;
+  $('goOnline').addEventListener('click', online);
+  $('goPhoto').addEventListener('click', photos);
+}
+
+function online() {
+  const prev = hw.answers || {};
+  $('main').innerHTML = header() + `
+    <form class="card" id="form">
+      ${hw.questions.map((q) => `<div class="q">
+        <label class="p" for="q${q.question_id}"><span class="n">${q.position}</span>${esc(q.prompt)}</label>
+        ${q.answer_type === 'multiple_choice'
+          ? (q.options || []).map((o, i) => `<label class="opt"><input type="radio" name="q${q.question_id}" value="${esc(o)}" ${prev[q.question_id] === o ? 'checked' : ''}> ${esc(o)}</label>`).join('')
+          : `<input type="text" id="q${q.question_id}" name="q${q.question_id}" autocomplete="off" ${q.answer_type === 'number' ? 'inputmode="decimal"' : ''} value="${esc(prev[q.question_id] ?? '')}">`}
+      </div>`).join('')}
+      <div class="actions"><button class="btn" type="button" id="back">Back</button><button class="btn primary" type="submit" id="send">Hand in</button></div>
+      <div class="error" id="err"></div>
+    </form>`;
+  $('back').addEventListener('click', home);
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const answers = {};
+    let blanks = 0;
+    for (const q of hw.questions) {
+      const el = q.answer_type === 'multiple_choice'
+        ? document.querySelector(`input[name="q${q.question_id}"]:checked`) : $(`q${q.question_id}`);
+      const v = (el?.value ?? '').trim();
+      answers[q.question_id] = v;
+      if (!v) blanks++;
+    }
+    if (blanks && !confirm(`${blanks} question${blanks > 1 ? 's are' : ' is'} blank. Hand in anyway?`)) return;
+    $('send').disabled = true;
+    const { error } = await sb.rpc('homework_submit_online', { p_token: token, p_answers: answers });
+    if (error) { $('err').textContent = error.message; $('send').disabled = false; return; }
+    thanks();
+  });
+}
+
+async function shrink(file, max = 2000) {
+  if (file.type === 'application/pdf') return file;
+  const bmp = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', 0.85));
+}
+
+function photos() {
+  files = [];
+  $('main').innerHTML = header() + `
+    <div class="card">
+      <p style="margin-top:0">Take a clear photo of <b>each page</b> in good light, flat on a table, with the whole page in view.</p>
+      <input type="file" id="pick" accept="image/*,application/pdf" multiple class="hidden">
+      <button class="btn" id="add">📷 Add photo or scan</button>
+      <div class="previews" id="previews"></div>
+      <div class="actions"><button class="btn" id="back">Back</button><button class="btn primary" id="send" disabled>Send</button></div>
+      <div class="error" id="err"></div>
+    </div>`;
+  $('back').addEventListener('click', home);
+  $('add').addEventListener('click', () => $('pick').click());
+  $('pick').addEventListener('change', () => {
+    for (const f of $('pick').files) if (files.length < 10) files.push(f);
+    $('pick').value = '';
+    $('previews').innerHTML = files.map((f) => f.type === 'application/pdf'
+      ? `<div class="pdf">PDF<br>${esc(f.name.slice(0, 14))}</div>` : `<img src="${URL.createObjectURL(f)}" alt="">`).join('');
+    $('send').disabled = !files.length;
+    $('add').textContent = files.length ? '📷 Add another page' : '📷 Add photo or scan';
+  });
+  $('send').addEventListener('click', async () => {
+    $('send').disabled = true; $('add').disabled = true;
+    $('err').textContent = '';
+    const paths = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        $('send').textContent = `Sending ${i + 1} of ${files.length}…`;
+        const blob = await shrink(files[i]);
+        const isPdf = files[i].type === 'application/pdf';
+        const path = `homework/${token}/${Date.now()}-${i + 1}.${isPdf ? 'pdf' : 'jpg'}`;
+        const { error } = await sb.storage.from('homework-uploads').upload(path, blob, { contentType: isPdf ? 'application/pdf' : 'image/jpeg' });
+        if (error) throw error;
+        paths.push(path);
+      }
+      const { error } = await sb.rpc('homework_submit_photos', { p_token: token, p_paths: paths });
+      if (error) throw error;
+      thanks();
+    } catch (e) {
+      $('err').textContent = e.message || 'Something went wrong. Please try again.';
+      $('send').disabled = false; $('add').disabled = false; $('send').textContent = 'Send';
+    }
+  });
+}
+
+function thanks() {
+  $('main').innerHTML = header() + `<div class="card done"><div class="big">🎉</div><h1>Handed in. Thank you!</h1>
+    <p class="sub">${esc(hw.first_name)}'s teacher will look at it soon. You can use this link again to send a new version until it's marked.</p></div>`;
+  hw.status = 'submitted';
+}
+
+load();
+</script>
+</body>
+</html>

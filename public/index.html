@@ -161,6 +161,43 @@
   .status.none { color: var(--muted); }
   .empty { background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--muted); }
 
+  /* Homework */
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .form-row > div { flex: 1; min-width: 140px; }
+  textarea.field { resize: vertical; font: inherit; }
+  .checks { display: flex; gap: 16px; flex-wrap: wrap; }
+  .hw-list { display: grid; gap: 10px; }
+  .hw-card { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+  .hw-card:hover { border-color: var(--green); }
+  .hw-top { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+  .hw-meta { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .q-edit { display: flex; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin-bottom: 10px; align-items: flex-start; }
+  .q-num { width: 28px; height: 28px; border-radius: 50%; background: var(--green-soft); color: var(--green); display: grid; place-items: center; font-weight: 600; flex: none; }
+  .q-body { flex: 1; min-width: 0; }
+  .q-list { margin: 10px 0 0; padding-left: 22px; }
+  .q-list li { margin: 3px 0; }
+  .sticky-actions { position: sticky; bottom: 0; background: var(--bg); padding: 12px 0; margin: 0; border-top: 1px solid var(--line); }
+  .review td { vertical-align: top; }
+  .review tr.flagged td { background: #fff8e6; }
+  .conf { font-size: 12px; color: var(--muted); }
+  .conf.low { color: var(--amber); font-weight: 600; }
+  .tick { border: 1px solid var(--line); background: #fff; border-radius: 8px; width: 40px; height: 34px; margin-left: 3px; font-size: 16px; }
+  .tick.on.yes { background: var(--green); border-color: var(--green); color: #fff; }
+  .tick.on.no { background: var(--red); border-color: var(--red); color: #fff; }
+  .score-big { font-size: 26px; font-weight: 700; color: var(--green); }
+  .ai-summary { background: var(--green-soft); border-radius: 8px; padding: 10px 12px; margin: 12px 0 0; font-size: 14px; }
+  .consistency { background: var(--amber-soft); color: #7a5112; border-radius: 8px; padding: 10px 12px; margin: 10px 0 0; font-size: 14px; }
+  .photos { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .photos img { height: 180px; border-radius: 8px; border: 1px solid var(--line); }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: #faf9f5; }
+  .bar-row { display: grid; grid-template-columns: 1fr 2fr 50px; gap: 10px; align-items: center; margin: 6px 0; font-size: 14px; }
+  .bar { background: #eee; border-radius: 999px; height: 10px; overflow: hidden; }
+  .bar span { display: block; height: 100%; background: var(--green); }
+  .bar span.low { background: var(--red); }
+  a.btn { text-decoration: none; color: inherit; display: inline-block; }
+
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff;
     padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 20; max-width: 90vw; }
   .toast.error { background: var(--red); }
@@ -238,6 +275,7 @@ const ROLE_NAMES = {
 };
 
 const state = { me: null, pupils: [], classes: [], staff: [], tab: 'years', classYear: 1, photoGroup: 'staff',
+  classTab: 'register', hwView: null, homework: [], submissions: [], questions: [], answers: [], progressPupil: null,
   regDate: todayISO(), regSession: new Date().getHours() < 12 ? 'AM' : 'PM', regClass: null, attendance: [] };
 let sortables = [];
 
@@ -346,6 +384,7 @@ async function enterAs() {
   }
   state.me = me;
   state.tab = me.access_level <= 2 ? (me.access_level === 0 ? 'admin' : 'years') : 'class';
+  Object.assign(state, { classTab: 'register', hwView: null, progressPupil: null });
   $('acting').textContent = `${staffName(me)} · ${roleName(me.role)} (#${me.staff_id})`;
   $('schoolName').textContent = me.school_name ?? '';
   show('app');
@@ -926,15 +965,623 @@ function renderClassView() {
     return;
   }
 
-  const unmarked = pupils.filter((p) => !statusOf(p.pupil_id)).map((p) => p.pupil_id);
+  const tabs = [['register', 'Register'], ['homework', 'Homework'], ['progress', 'Progress']];
   $('app').innerHTML = `${head}
-    <h3>Register</h3>
+    <nav class="steps">${tabs.map(([k, l]) => `<button class="step ${state.classTab === k ? 'active' : ''}" data-ct="${k}">${l}</button>`).join('')}</nav>
+    <div id="view"></div>`;
+  $('app').querySelectorAll('[data-ct]').forEach((b) => b.addEventListener('click', async () => {
+    state.classTab = b.dataset.ct;
+    state.hwView = null;
+    if (state.classTab !== 'register') await loadHomework(c.class_id);
+    render();
+  }));
+
+  if (state.classTab === 'homework') return renderHomework(c, pupils);
+  if (state.classTab === 'progress') return renderProgress(c, pupils);
+
+  const unmarked = pupils.filter((p) => !statusOf(p.pupil_id)).map((p) => p.pupil_id);
+  $('view').innerHTML = `
     ${registerControls(mine)}
     ${unmarked.length ? `<p><button class="btn primary small" id="allPresent">Mark ${unmarked.length} unmarked as present</button></p>` : ''}
     ${registerTable(pupils, true)}`;
   bindRegisterControls();
   $('allPresent')?.addEventListener('click', () => mark(unmarked, 'present'));
   document.querySelectorAll('.mark').forEach((b) => b.addEventListener('click', () => mark([Number(b.dataset.id)], b.dataset.k)));
+}
+
+/* ======================= Homework (class teachers) ======================= */
+
+const FLAG_CONFIDENCE = 0.8;
+const TYPE_LABEL = { number: 'Number', short_text: 'Word or phrase', multiple_choice: 'Multiple choice' };
+
+async function api(path, body) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+    body: JSON.stringify(body),
+  });
+  const out = await res.json().catch(() => ({ error: `Server error (${res.status})` }));
+  if (!res.ok) throw new Error(out.error || `Server error (${res.status})`);
+  return out;
+}
+
+async function loadHomework(classId) {
+  const [hw, subs] = await Promise.all([
+    sb.from('homework').select('*').eq('class_id', classId).order('created_at', { ascending: false }),
+    sb.from('homework_submissions').select('submission_id, homework_id, pupil_id, token, status, channel, photo_paths, score, max_score, ai_summary, submitted_at'),
+  ]);
+  check(hw, subs);
+  state.homework = hw.data;
+  state.submissions = subs.data;
+}
+
+async function loadHomeworkDetail(hwId) {
+  const [qs, ans] = await Promise.all([
+    sb.from('homework_questions').select('*').eq('homework_id', hwId).order('position'),
+    sb.from('homework_answers').select('*, homework_submissions!inner(homework_id)').eq('homework_submissions.homework_id', hwId),
+  ]);
+  check(qs, ans);
+  state.questions = qs.data;
+  state.answers = ans.data;
+}
+
+const familyLink = (token) => `${location.origin}/h.html?t=${token}`;
+const pct = (s) => (s.max_score ? Math.round((100 * s.score) / s.max_score) : 0);
+const subsFor = (hwId) => state.submissions.filter((s) => s.homework_id === hwId);
+const answersFor = (subId) => state.answers.filter((a) => a.submission_id === subId);
+const isFlagged = (a) => a.teacher_correct === null && (a.ai_confidence ?? 0) < FLAG_CONFIDENCE;
+const STATUS_TEXT = { sent: 'Not handed in', submitted: 'Handed in', marked: 'AI marked', reviewed: 'Marked' };
+const STATUS_TAG = { sent: '', submitted: 'amber', marked: 'amber', reviewed: 'green' };
+
+function renderHomework(c, pupils) {
+  const v = state.hwView;
+  if (v?.mode === 'new') return renderHomeworkNew(c);
+  if (v?.mode === 'edit') return renderHomeworkEdit(c);
+  if (v?.mode === 'sent') return renderHomeworkSent(c, pupils);
+  if (v?.mode === 'review') return renderReview(c, pupils);
+
+  const cards = state.homework.map((h) => {
+    const subs = subsFor(h.homework_id);
+    const handed = subs.filter((s) => s.status !== 'sent').length;
+    const done = subs.filter((s) => s.status === 'reviewed').length;
+    const label = h.status === 'draft' ? '<span class="tag amber">Draft</span>' : h.status === 'closed' ? '<span class="tag">Closed</span>' : '<span class="tag green">Sent</span>';
+    return `<button class="hw-card" data-hw="${h.homework_id}">
+      <div class="hw-top"><b>${esc(h.title)}</b>${label}</div>
+      <div class="hint">${esc(h.objective || h.topic || '')}</div>
+      <div class="hw-meta">${h.due_date ? `Due ${fmtDate(h.due_date)}` : ''}${h.status !== 'draft' ? ` · Handed in ${handed}/${subs.length} · Marked ${done}` : ''}</div>
+    </button>`;
+  }).join('');
+
+  $('view').innerHTML = `
+    <div class="toolbar"><span class="hint" style="margin:0">Set homework, send it to families, then review the AI's marking.</span><span class="spacer"></span>
+      <button class="btn primary" id="newHw">New homework</button></div>
+    ${cards ? `<div class="hw-list">${cards}</div>` : '<div class="empty">No homework yet. Tap "New homework" to start.</div>'}`;
+  $('newHw').addEventListener('click', () => { state.hwView = { mode: 'new' }; render(); });
+  document.querySelectorAll('.hw-card').forEach((b) => b.addEventListener('click', () => openHomework(Number(b.dataset.hw))));
+}
+
+async function openHomework(hwId) {
+  const classId = state.homework.find((x) => x.homework_id === hwId)?.class_id;
+  await Promise.all([loadHomeworkDetail(hwId), classId ? loadHomework(classId) : null]); // pick up new hand-ins
+  const h = state.homework.find((x) => x.homework_id === hwId);
+  state.hwView = { mode: h.status === 'draft' ? 'edit' : 'sent', hwId };
+  render();
+}
+
+function renderHomeworkNew(c) {
+  const due = new Date(Date.now() + 7 * 864e5).toLocaleDateString('en-CA');
+  $('view').innerHTML = `
+    <p><button class="btn small" id="back">← All homework</button></p>
+    <div class="panel">
+      <h3 style="margin-top:0">New homework for ${esc(c.name)} (${yearLabel(c.year_group)})</h3>
+      <label class="f">Topic</label>
+      <input class="field" id="topic" placeholder="e.g. Equivalent fractions, column addition, telling the time">
+      <div class="form-row">
+        <div><label class="f">Number of questions</label><input class="field" id="count" type="number" min="1" max="20" value="8"></div>
+        <div><label class="f">Due date</label><input class="field" id="due" type="date" value="${due}"></div>
+      </div>
+      <label class="f">Question types</label>
+      <div class="checks">${Object.entries(TYPE_LABEL).map(([k, l]) => `<label><input type="checkbox" value="${k}" ${k !== 'multiple_choice' ? 'checked' : ''}> ${l}</label>`).join('')}</div>
+      <label class="f">Notes for the AI (optional)</label>
+      <textarea class="field" id="notes" rows="2" placeholder="e.g. include two money word problems; keep numbers under 100"></textarea>
+      <div class="toolbar" style="margin-top:16px">
+        <button class="btn primary" id="draft">Draft with AI</button>
+        <button class="btn" id="blank">Write my own</button>
+        <span class="hint" id="drafting" style="margin:0"></span>
+      </div>
+    </div>`;
+  $('back').addEventListener('click', () => { state.hwView = null; render(); });
+
+  const create = async (draft) => {
+    const ins = await sb.from('homework').insert({
+      class_id: c.class_id, title: draft.title, topic: $('topic').value.trim() || null,
+      objective: draft.objective || null, due_date: $('due').value || null,
+    }).select().single();
+    check(ins);
+    if (draft.questions.length) {
+      check(await sb.from('homework_questions').insert(draft.questions.map((q) => ({ ...q, homework_id: ins.data.homework_id }))));
+    }
+    state.homework.unshift(ins.data);
+    await openHomework(ins.data.homework_id);
+  };
+
+  $('draft').addEventListener('click', async () => {
+    const topic = $('topic').value.trim();
+    if (!topic) return toast('Add a topic first', true);
+    const types = [...document.querySelectorAll('.checks input:checked')].map((x) => x.value);
+    $('draft').disabled = true;
+    $('drafting').textContent = 'Drafting questions… this takes about 15 seconds.';
+    try {
+      const draft = await api('/api/generate', { class_id: c.class_id, topic, count: Number($('count').value), types, notes: $('notes').value });
+      await create(draft);
+      toast('Draft ready. Check the questions and answers before sending.');
+    } catch (e) {
+      toast(e.message, true);
+      $('draft').disabled = false;
+      $('drafting').textContent = '';
+    }
+  });
+  $('blank').addEventListener('click', async () => {
+    const topic = $('topic').value.trim();
+    await create({ title: topic || 'Homework', objective: '', questions: [{ position: 1, prompt: '', answer_type: 'number', correct_answer: '', marks: 1 }] });
+  });
+}
+
+function renderHomeworkEdit(c) {
+  const h = state.homework.find((x) => x.homework_id === state.hwView.hwId);
+  const qs = state.questions;
+  const qRow = (q, i) => `
+    <div class="q-edit" data-i="${i}">
+      <div class="q-num">${i + 1}</div>
+      <div class="q-body">
+        <textarea class="field q-prompt" rows="2" placeholder="Question">${esc(q.prompt)}</textarea>
+        <div class="form-row">
+          <div><label class="f">Answer type</label><select class="field q-type">${Object.entries(TYPE_LABEL).map(([k, l]) => `<option value="${k}" ${q.answer_type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+          <div><label class="f">Correct answer</label><input class="field q-answer" value="${esc(q.correct_answer)}"></div>
+          <div style="max-width:90px"><label class="f">Marks</label><select class="field q-marks">${[1, 2, 3].map((m) => `<option ${q.marks === m ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
+        </div>
+        <div class="q-options ${q.answer_type === 'multiple_choice' ? '' : 'hidden'}">
+          <label class="f">Options (one per line)</label>
+          <textarea class="field q-opts" rows="3">${esc((q.options || []).join('\n'))}</textarea>
+        </div>
+        <label class="hint"><input type="checkbox" class="q-work" ${q.working_space ? 'checked' : ''}> Space for working on the paper sheet</label>
+      </div>
+      <button class="btn small q-del" title="Remove question">✕</button>
+    </div>`;
+
+  $('view').innerHTML = `
+    <p><button class="btn small" id="back">← All homework</button></p>
+    <div class="panel">
+      <div class="toolbar" style="margin:0 0 6px"><span class="tag amber">Draft</span><span class="hint" style="margin:0">Check every question and answer. Nothing is sent until you approve it.</span></div>
+      <label class="f">Title</label><input class="field" id="hwTitle" value="${esc(h.title)}">
+      <label class="f">Curriculum objective</label><input class="field" id="hwObjective" value="${esc(h.objective || '')}">
+      <div class="form-row">
+        <div><label class="f">Due date</label><input class="field" id="hwDue" type="date" value="${h.due_date || ''}"></div>
+      </div>
+      <label class="f">Message to families (optional)</label>
+      <textarea class="field" id="hwInstr" rows="2" placeholder="e.g. Please let your child try on their own first.">${esc(h.instructions || '')}</textarea>
+    </div>
+    <h3>Questions</h3>
+    <div id="qList">${qs.map(qRow).join('')}</div>
+    <p><button class="btn small" id="addQ">+ Add question</button></p>
+    <div class="toolbar sticky-actions">
+      <button class="btn" id="delHw">Delete draft</button><span class="spacer"></span>
+      <button class="btn" id="saveHw">Save draft</button>
+      <button class="btn primary" id="sendHw">Approve and send to ${esc(c.name)}</button>
+    </div>`;
+
+  const readForm = () => [...document.querySelectorAll('.q-edit')].map((el, i) => ({
+    position: i + 1,
+    prompt: el.querySelector('.q-prompt').value.trim(),
+    answer_type: el.querySelector('.q-type').value,
+    correct_answer: el.querySelector('.q-answer').value.trim(),
+    marks: Number(el.querySelector('.q-marks').value),
+    options: el.querySelector('.q-type').value === 'multiple_choice'
+      ? el.querySelector('.q-opts').value.split('\n').map((s) => s.trim()).filter(Boolean) : null,
+    working_space: el.querySelector('.q-work').checked,
+  }));
+  const syncState = () => { state.questions = readForm(); };
+
+  document.querySelectorAll('.q-type').forEach((s) => s.addEventListener('change', () => {
+    s.closest('.q-edit').querySelector('.q-options').classList.toggle('hidden', s.value !== 'multiple_choice');
+  }));
+  document.querySelectorAll('.q-del').forEach((b) => b.addEventListener('click', () => {
+    syncState(); state.questions.splice(Number(b.closest('.q-edit').dataset.i), 1); render();
+  }));
+  $('addQ').addEventListener('click', () => {
+    syncState(); state.questions.push({ prompt: '', answer_type: 'number', correct_answer: '', marks: 1 }); render();
+  });
+  $('back').addEventListener('click', () => { state.hwView = null; render(); });
+
+  const save = async () => {
+    const qsNow = readForm();
+    const problem = qsNow.findIndex((q) => !q.prompt || !q.correct_answer
+      || (q.answer_type === 'multiple_choice' && (q.options.length < 2 || !q.options.includes(q.correct_answer))));
+    if (!qsNow.length) { toast('Add at least one question', true); return false; }
+    if (problem >= 0) {
+      toast(`Question ${problem + 1} needs a question, a correct answer${qsNow[problem].answer_type === 'multiple_choice' ? ', and the answer must be one of the options' : ''}.`, true);
+      return false;
+    }
+    const upd = { title: $('hwTitle').value.trim() || 'Homework', objective: $('hwObjective').value.trim() || null,
+      due_date: $('hwDue').value || null, instructions: $('hwInstr').value.trim() || null };
+    check(await sb.from('homework').update(upd).eq('homework_id', h.homework_id));
+    Object.assign(h, upd);
+    check(await sb.from('homework_questions').delete().eq('homework_id', h.homework_id));
+    const ins = await sb.from('homework_questions').insert(qsNow.map((q) => ({ ...q, homework_id: h.homework_id }))).select();
+    check(ins);
+    state.questions = ins.data.sort((a, b) => a.position - b.position);
+    return true;
+  };
+
+  $('saveHw').addEventListener('click', async () => { if (await save()) toast('Draft saved'); });
+  $('delHw').addEventListener('click', async () => {
+    if (!confirm('Delete this draft?')) return;
+    check(await sb.from('homework').delete().eq('homework_id', h.homework_id));
+    state.homework = state.homework.filter((x) => x !== h);
+    state.hwView = null;
+    render();
+  });
+  $('sendHw').addEventListener('click', async () => {
+    const pupils = state.pupils.filter((p) => p.class_id === c.class_id);
+    if (!pupils.length) return toast('There are no pupils in this class yet', true);
+    if (!(await save())) return;
+    if (!confirm(`Send "${h.title}" to the families of ${pupils.length} pupils? You won't be able to change the questions afterwards.`)) return;
+    const subs = await sb.from('homework_submissions')
+      .upsert(pupils.map((p) => ({ homework_id: h.homework_id, pupil_id: p.pupil_id })), { onConflict: 'homework_id,pupil_id', ignoreDuplicates: true })
+      .select('submission_id, homework_id, pupil_id, token, status, channel, photo_paths, score, max_score, ai_summary, submitted_at');
+    check(subs);
+    const sent = { status: 'sent', sent_at: new Date().toISOString() };
+    check(await sb.from('homework').update(sent).eq('homework_id', h.homework_id));
+    Object.assign(h, sent);
+    state.submissions.push(...subs.data);
+    state.hwView = { mode: 'sent', hwId: h.homework_id };
+    render();
+    toast('Sent. Print the pack for children without a printer, and share each family link.');
+  });
+}
+
+function renderHomeworkSent(c, pupils) {
+  const h = state.homework.find((x) => x.homework_id === state.hwView.hwId);
+  const subs = subsFor(h.homework_id);
+  const pupilOf = (s) => state.pupils.find((p) => p.pupil_id === s.pupil_id) ?? { first_name: 'Pupil', last_name: `#${s.pupil_id}`, pupil_id: s.pupil_id };
+  const sorted = [...subs].sort((a, b) => pupilName(pupilOf(a)).localeCompare(pupilName(pupilOf(b))));
+  const toMark = subs.filter((s) => s.status === 'submitted');
+  const cleanMarked = subs.filter((s) => s.status === 'marked' && !answersFor(s.submission_id).some(isFlagged));
+  const total = state.questions.reduce((n, q) => n + q.marks, 0);
+
+  $('view').innerHTML = `
+    <p><button class="btn small" id="back">← All homework</button></p>
+    <div class="panel">
+      <div class="hw-top"><h3 style="margin:0">${esc(h.title)}</h3>${h.status === 'closed' ? '<span class="tag">Closed</span>' : '<span class="tag green">Sent</span>'}</div>
+      <p class="hint" style="margin:4px 0 10px">${esc(h.objective || '')}${h.due_date ? ` · Due ${fmtDate(h.due_date)}` : ''} · ${state.questions.length} questions, ${total} marks</p>
+      <div class="toolbar" style="margin:0">
+        <button class="btn" id="printPack">Print pack (PDF)</button>
+        <button class="btn" id="showQs">${state.hwView.showQs ? 'Hide' : 'Show'} questions</button>
+        <button class="btn" id="refreshHw">Refresh</button>
+        <span class="spacer"></span>
+        ${h.status === 'sent' ? '<button class="btn small" id="closeHw">Close homework</button>' : ''}
+      </div>
+      ${state.hwView.showQs ? `<ol class="q-list">${state.questions.map((q) => `<li>${esc(q.prompt)} <span class="hint">→ ${esc(q.correct_answer)}</span></li>`).join('')}</ol>` : ''}
+    </div>
+    <div class="toolbar">
+      <b>Pupils</b><span class="spacer"></span>
+      ${toMark.length ? `<button class="btn primary small" id="markAll">Mark ${toMark.length} handed in with AI</button>` : ''}
+      ${cleanMarked.length ? `<button class="btn primary small" id="approveClean">Approve ${cleanMarked.length} with nothing flagged</button>` : ''}
+      <span class="hint" id="progressNote" style="margin:0"></span>
+    </div>
+    <table class="table">
+      <tr><th>Pupil</th><th>Status</th><th>Score</th><th></th></tr>
+      ${sorted.map((s) => {
+        const p = pupilOf(s);
+        const flags = answersFor(s.submission_id).filter(isFlagged).length;
+        const action = s.status === 'submitted' ? `<button class="btn small" data-mark="${s.submission_id}">Mark with AI</button>`
+          : s.status === 'marked' ? `<button class="btn small primary" data-review="${s.submission_id}">Review${flags ? ` (${flags} flagged)` : ''}</button>`
+          : s.status === 'reviewed' ? `<button class="btn small" data-review="${s.submission_id}">View</button>` : '';
+        return `<tr>
+          <td><span class="who-cell">${avatar(p, 30)}${esc(pupilName(p))}</span></td>
+          <td><span class="tag ${STATUS_TAG[s.status]}">${STATUS_TEXT[s.status]}</span>${s.channel ? ` <span class="hint">${s.channel === 'photo' ? 'paper' : 'online'}</span>` : ''}</td>
+          <td>${s.score !== null && s.max_score ? `${s.score}/${s.max_score}` : ''}</td>
+          <td style="text-align:right;white-space:nowrap">${action}
+            <button class="btn small" data-copy="${s.token}" title="Copy the family link">Copy link</button>
+            <a class="btn small" href="${familyLink(s.token)}" target="_blank" rel="noopener" title="Open the family page, e.g. to photograph a sheet handed in at school">Open</a></td>
+        </tr>`;
+      }).join('')}
+    </table>`;
+
+  $('back').addEventListener('click', () => { state.hwView = null; render(); });
+  $('showQs').addEventListener('click', () => { state.hwView.showQs = !state.hwView.showQs; render(); });
+  $('refreshHw').addEventListener('click', async () => { const keep = state.hwView.showQs; await openHomework(h.homework_id); state.hwView.showQs = keep; render(); });
+  $('printPack').addEventListener('click', () => printPack(c, h, sorted.map((s) => ({ sub: s, pupil: pupilOf(s) }))));
+  $('closeHw')?.addEventListener('click', async () => {
+    if (!confirm('Close this homework? Families will no longer be able to hand it in.')) return;
+    check(await sb.from('homework').update({ status: 'closed' }).eq('homework_id', h.homework_id));
+    h.status = 'closed'; render();
+  });
+  document.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(familyLink(b.dataset.copy)); toast('Link copied'); }
+    catch { prompt('Copy this link:', familyLink(b.dataset.copy)); }
+  }));
+  document.querySelectorAll('[data-mark]').forEach((b) => b.addEventListener('click', async () => {
+    b.disabled = true; b.textContent = 'Marking…';
+    if (await markSubmission(Number(b.dataset.mark))) render(); else { b.disabled = false; b.textContent = 'Mark with AI'; }
+  }));
+  document.querySelectorAll('[data-review]').forEach((b) => b.addEventListener('click', () => {
+    state.hwView = { mode: 'review', hwId: h.homework_id, subId: Number(b.dataset.review) }; render();
+  }));
+  $('markAll')?.addEventListener('click', async () => {
+    $('markAll').disabled = true;
+    let n = 0;
+    for (const s of toMark) {
+      $('progressNote').textContent = `Marking ${++n} of ${toMark.length}…`;
+      await markSubmission(s.submission_id);
+    }
+    render();
+  });
+  $('approveClean')?.addEventListener('click', async () => {
+    if (!confirm(`Approve the AI's marking for ${cleanMarked.length} pupils? None of their answers were flagged.`)) return;
+    for (const s of cleanMarked) await approveSubmission(s, answersFor(s.submission_id).map((a) => ({ ...a, teacher_correct: a.ai_correct })));
+    toast(`${cleanMarked.length} approved`);
+    render();
+  });
+}
+
+async function markSubmission(subId) {
+  try {
+    await api('/api/mark', { submission_id: subId });
+    await loadHomework(state.homework.find((h) => h.homework_id === state.hwView.hwId).class_id);
+    await loadHomeworkDetail(state.hwView.hwId);
+    return true;
+  } catch (e) {
+    toast(e.message, true);
+    return false;
+  }
+}
+
+async function approveSubmission(sub, answers) {
+  const qById = new Map(state.questions.map((q) => [q.question_id, q]));
+  const rows = answers.map((a) => ({
+    submission_id: sub.submission_id, question_id: a.question_id,
+    teacher_correct: !!a.teacher_correct, marks_awarded: a.teacher_correct ? qById.get(a.question_id)?.marks ?? 1 : 0,
+  }));
+  check(await sb.from('homework_answers').upsert(rows, { onConflict: 'submission_id,question_id' }));
+  const score = rows.reduce((n, r) => n + r.marks_awarded, 0);
+  const max = state.questions.reduce((n, q) => n + q.marks, 0);
+  const upd = { status: 'reviewed', reviewed_at: new Date().toISOString(), score, max_score: max };
+  check(await sb.from('homework_submissions').update(upd).eq('submission_id', sub.submission_id));
+  Object.assign(sub, upd);
+  for (const r of rows) {
+    const a = state.answers.find((x) => x.submission_id === r.submission_id && x.question_id === r.question_id);
+    if (a) Object.assign(a, r); else state.answers.push(r);
+  }
+}
+
+// Compare this result with the pupil's other marked homework on the same topic
+function consistencyNote(sub, scorePct) {
+  const h = state.homework.find((x) => x.homework_id === sub.homework_id);
+  const key = (h?.topic || h?.title || '').toLowerCase();
+  const others = state.submissions.filter((s) => s.pupil_id === sub.pupil_id && s.submission_id !== sub.submission_id && s.status === 'reviewed'
+    && ((state.homework.find((x) => x.homework_id === s.homework_id)?.topic || '').toLowerCase() === key));
+  if (others.length < 2) return '';
+  const avg = Math.round(others.reduce((n, s) => n + pct(s), 0) / others.length);
+  if (scorePct - avg >= 40) return `Scored ${scorePct}% here but usually ${avg}% on ${esc(h.topic)}. Worth a quick check in class.`;
+  return '';
+}
+
+async function renderReview(c) {
+  const h = state.homework.find((x) => x.homework_id === state.hwView.hwId);
+  const sub = state.submissions.find((s) => s.submission_id === state.hwView.subId);
+  const p = state.pupils.find((x) => x.pupil_id === sub.pupil_id) ?? { first_name: 'Pupil', last_name: '' };
+  const ans = new Map(answersFor(sub.submission_id).map((a) => [a.question_id, a]));
+  const decided = state.hwView.decisions ??= Object.fromEntries([...ans.values()].map((a) => [a.question_id, a.teacher_correct ?? a.ai_correct]));
+  const readOnly = sub.status === 'reviewed' && !state.hwView.editing;
+  const score = state.questions.reduce((n, q) => n + (decided[q.question_id] ? q.marks : 0), 0);
+  const max = state.questions.reduce((n, q) => n + q.marks, 0);
+  const note = consistencyNote(sub, max ? Math.round((100 * score) / max) : 0);
+
+  $('view').innerHTML = `
+    <p><button class="btn small" id="back">← ${esc(h.title)}</button></p>
+    <div class="panel">
+      <div class="hw-top"><span class="who-cell">${avatar(p, 40)}<h3 style="margin:0">${esc(pupilName(p))}</h3></span>
+        <span class="score-big">${score}/${max}</span></div>
+      ${sub.ai_summary ? `<p class="ai-summary"><b>AI summary:</b> ${esc(sub.ai_summary)}</p>` : ''}
+      ${note ? `<p class="consistency">⚑ ${note}</p>` : ''}
+      ${sub.channel === 'photo' ? '<div class="photos" id="photos"><span class="hint">Loading photos…</span></div>' : '<p class="hint" style="margin:0">Answered online.</p>'}
+    </div>
+    <table class="table review">
+      <tr><th>#</th><th>Question</th><th>Answer</th><th>Pupil wrote</th><th>AI</th><th>Mark</th></tr>
+      ${state.questions.map((q) => {
+        const a = ans.get(q.question_id) ?? {};
+        const flagged = a.teacher_correct == null && (a.ai_confidence ?? 0) < FLAG_CONFIDENCE;
+        const ok = decided[q.question_id];
+        return `<tr class="${flagged ? 'flagged' : ''}">
+          <td>${q.position}</td>
+          <td>${esc(q.prompt)}</td>
+          <td><b>${esc(q.correct_answer)}</b></td>
+          <td>${a.answer_text ? esc(a.answer_text) : '<span class="hint">blank</span>'}${a.ai_note ? `<div class="hint">${esc(a.ai_note)}</div>` : ''}</td>
+          <td>${a.ai_correct == null ? '' : `${a.ai_correct ? '✓' : '✗'} <span class="conf ${flagged ? 'low' : ''}">${Math.round((a.ai_confidence ?? 0) * 100)}%</span>`}</td>
+          <td style="white-space:nowrap">${readOnly ? (ok ? '✓' : '✗')
+            : `<button class="tick ${ok ? 'on yes' : ''}" data-q="${q.question_id}" data-v="1">✓</button><button class="tick ${ok === false ? 'on no' : ''}" data-q="${q.question_id}" data-v="0">✗</button>`}</td>
+        </tr>`;
+      }).join('')}
+    </table>
+    <div class="toolbar sticky-actions">
+      ${readOnly ? '<button class="btn" id="editMarks">Change marks</button>'
+        : `<button class="btn" id="remark">Mark again with AI</button><span class="spacer"></span>
+           <span class="hint" style="margin:0">Rows highlighted in yellow need your check.</span>
+           <button class="btn primary" id="approve">Approve ${score}/${max}</button>`}
+    </div>`;
+
+  $('back').addEventListener('click', () => { state.hwView = { mode: 'sent', hwId: h.homework_id }; render(); });
+  $('editMarks')?.addEventListener('click', () => { state.hwView.editing = true; render(); });
+  document.querySelectorAll('.tick').forEach((b) => b.addEventListener('click', () => {
+    decided[Number(b.dataset.q)] = b.dataset.v === '1'; render();
+  }));
+  $('remark')?.addEventListener('click', async () => {
+    $('remark').disabled = true; $('remark').textContent = 'Marking…';
+    if (await markSubmission(sub.submission_id)) { state.hwView.decisions = null; state.hwView.editing = false; }
+    render();
+  });
+  $('approve')?.addEventListener('click', async () => {
+    const rows = state.questions.map((q) => ({
+      ...(ans.get(q.question_id) ?? { submission_id: sub.submission_id, question_id: q.question_id }),
+      teacher_correct: !!decided[q.question_id],
+    }));
+    await approveSubmission(sub, rows);
+    await loadHomeworkDetail(h.homework_id);
+    toast(`${pupilName(p)}: ${score}/${max} saved`);
+    const next = subsFor(h.homework_id).find((s) => s.status === 'marked');
+    state.hwView = next ? { mode: 'review', hwId: h.homework_id, subId: next.submission_id } : { mode: 'sent', hwId: h.homework_id };
+    render();
+  });
+
+  if (sub.channel === 'photo' && sub.photo_paths?.length) {
+    const { data } = await sb.storage.from('homework-uploads').createSignedUrls(sub.photo_paths, 3600);
+    const box = $('photos');
+    if (box) box.innerHTML = (data ?? []).filter((d) => d.signedUrl).map((d) =>
+      /\.pdf$/i.test(d.path) ? `<a class="btn small" href="${esc(d.signedUrl)}" target="_blank">Open PDF</a>`
+        : `<a href="${esc(d.signedUrl)}" target="_blank"><img src="${esc(d.signedUrl)}" alt="Homework photo"></a>`).join('') || '<span class="hint">No photos</span>';
+  }
+}
+
+/* ---------- Progress ---------- */
+
+function renderProgress(c, pupils) {
+  const reviewed = state.submissions.filter((s) => s.status === 'reviewed');
+  const hwById = new Map(state.homework.map((h) => [h.homework_id, h]));
+  const topicOf = (s) => hwById.get(s.homework_id)?.topic || hwById.get(s.homework_id)?.title || 'Other';
+  const sel = state.progressPupil;
+
+  if (sel) {
+    const p = state.pupils.find((x) => x.pupil_id === sel);
+    const mine = reviewed.filter((s) => s.pupil_id === sel)
+      .sort((a, b) => (hwById.get(b.homework_id)?.sent_at || '').localeCompare(hwById.get(a.homework_id)?.sent_at || ''));
+    const byTopic = new Map();
+    for (const s of mine) { const t = topicOf(s); if (!byTopic.has(t)) byTopic.set(t, []); byTopic.get(t).push(pct(s)); }
+    const topics = [...byTopic].map(([t, xs]) => ({ t, avg: Math.round(xs.reduce((a, b) => a + b, 0) / xs.length), n: xs.length }));
+    const strong = topics.filter((x) => x.avg >= 80);
+    const weak = topics.filter((x) => x.avg < 60);
+    $('view').innerHTML = `
+      <p><button class="btn small" id="back">← Class progress</button></p>
+      <div class="panel"><span class="who-cell">${avatar(p, 48)}<h3 style="margin:0">${esc(pupilName(p))}</h3></span></div>
+      <div class="two-col">
+        <div class="panel"><h4 style="margin-top:0">Strengths</h4>${strong.length ? strong.map((x) => `<div>${esc(x.t)} <span class="tag green">${x.avg}%</span></div>`).join('') : '<span class="hint">Not enough marked homework yet.</span>'}</div>
+        <div class="panel"><h4 style="margin-top:0">To work on</h4>${weak.length ? weak.map((x) => `<div>${esc(x.t)} <span class="tag red">${x.avg}%</span></div>`).join('') : '<span class="hint">Nothing below 60% yet.</span>'}</div>
+      </div>
+      <table class="table"><tr><th>Homework</th><th>Topic</th><th>Score</th></tr>
+        ${mine.map((s) => `<tr><td>${esc(hwById.get(s.homework_id)?.title)}</td><td>${esc(topicOf(s))}</td><td>${s.score}/${s.max_score} <span class="hint">${pct(s)}%</span></td></tr>`).join('')
+          || '<tr><td colspan="3" class="hint">No marked homework yet.</td></tr>'}
+      </table>`;
+    $('back').addEventListener('click', () => { state.progressPupil = null; render(); });
+    return;
+  }
+
+  const topics = [...new Set(reviewed.map(topicOf))];
+  const classAvg = (t) => {
+    const xs = reviewed.filter((s) => topicOf(s) === t).map(pct);
+    return xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
+  };
+  $('view').innerHTML = `
+    ${topics.length ? `<div class="panel"><h4 style="margin-top:0">Class averages by topic</h4>
+      ${topics.map((t) => { const a = classAvg(t); return `<div class="bar-row"><span>${esc(t)}</span><span class="bar"><span style="width:${a}%" class="${a < 60 ? 'low' : ''}"></span></span><b>${a}%</b></div>`; }).join('')}
+    </div>` : ''}
+    <table class="table"><tr><th>Pupil</th><th>Marked homework</th><th>Average</th><th>Latest</th></tr>
+      ${pupils.map((p) => {
+        const mine = reviewed.filter((s) => s.pupil_id === p.pupil_id);
+        const avg = mine.length ? Math.round(mine.reduce((n, s) => n + pct(s), 0) / mine.length) : null;
+        const last = mine.sort((a, b) => (b.submitted_at || '').localeCompare(a.submitted_at || ''))[0];
+        return `<tr class="clickable" data-p="${p.pupil_id}"><td><span class="who-cell">${avatar(p, 30)}${esc(pupilName(p))}</span></td>
+          <td>${mine.length}</td><td>${avg === null ? '<span class="hint">—</span>' : `<span class="tag ${avg >= 80 ? 'green' : avg < 60 ? 'red' : 'amber'}">${avg}%</span>`}</td>
+          <td>${last ? `${esc(hwById.get(last.homework_id)?.title)} <span class="hint">${last.score}/${last.max_score}</span>` : ''}</td></tr>`;
+      }).join('')}
+    </table>`;
+  document.querySelectorAll('tr[data-p]').forEach((r) => r.addEventListener('click', () => { state.progressPupil = Number(r.dataset.p); render(); }));
+}
+
+/* ---------- Print pack (PDF with a QR code per pupil) ---------- */
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = () => reject(new Error('Could not load ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+async function printPack(c, h, list) {
+  toast('Building the print pack…');
+  await loadScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js');
+  await loadScript('https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js');
+  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, M = 15, BOTTOM = 282;
+  const school = state.me.school_name || '';
+
+  const drawQR = (text, x, y, size) => {
+    const qr = window.qrcode(0, 'M');
+    qr.addData(text); qr.make();
+    const n = qr.getModuleCount(), cell = size / n;
+    doc.setFillColor(0, 0, 0);
+    for (let r = 0; r < n; r++) for (let col = 0; col < n; col++) if (qr.isDark(r, col)) doc.rect(x + col * cell, y + r * cell, cell + 0.02, cell + 0.02, 'F');
+  };
+
+  list.forEach(({ sub, pupil }, idx) => {
+    if (idx) doc.addPage();
+    let page = 1;
+    const footer = () => {
+      doc.setFontSize(8).setTextColor(120);
+      doc.text(`${pupilName(pupil)} · ${c.name} · ref ${sub.token.slice(0, 8)} · page ${page}`, M, 290);
+      doc.setTextColor(0);
+    };
+    // Header
+    doc.setFont('helvetica', 'bold').setFontSize(15).text(school, M, 18);
+    doc.setFontSize(13).text(h.title, M, 26);
+    doc.setFont('helvetica', 'normal').setFontSize(10);
+    doc.text(`Name: ${pupilName(pupil)}`, M, 34);
+    doc.text(`Class: ${c.name} (${yearLabel(c.year_group)})${h.due_date ? `     Due: ${fmtDate(h.due_date)}` : ''}`, M, 40);
+    drawQR(familyLink(sub.token), W - M - 30, 10, 30);
+    doc.setFontSize(7).text('Scan to answer online', W - M - 15, 43, { align: 'center' });
+    doc.text('or upload a photo of this sheet', W - M - 15, 46, { align: 'center' });
+    let y = 50;
+    if (h.instructions) {
+      doc.setFontSize(9).setTextColor(80);
+      const lines = doc.splitTextToSize(h.instructions, W - 2 * M - 40);
+      doc.text(lines, M, y); y += lines.length * 4 + 2;
+      doc.setTextColor(0);
+    }
+    doc.setDrawColor(200).line(M, y, W - M, y); y += 7;
+
+    for (const q of state.questions) {
+      doc.setFontSize(11);
+      const textW = q.answer_type === 'multiple_choice' ? W - 2 * M - 8 : W - 2 * M - 62;
+      const lines = doc.splitTextToSize(q.prompt, textW);
+      let h2 = Math.max(lines.length * 5, 12) + 4;
+      if (q.answer_type === 'multiple_choice') h2 += (q.options?.length || 0) * 7;
+      if (q.working_space) h2 += 32;
+      if (y + h2 > BOTTOM) { footer(); doc.addPage(); page++; y = 18;
+        doc.setFontSize(9).setTextColor(120).text(`${pupilName(pupil)} · ${h.title} (continued)`, M, 12); doc.setTextColor(0); }
+      doc.setFont('helvetica', 'bold').setFontSize(11).text(`${q.position}.`, M, y + 4);
+      doc.setFont('helvetica', 'normal').text(lines, M + 8, y + 4);
+      if (q.answer_type === 'multiple_choice') {
+        let oy = y + lines.length * 5 + 4;
+        doc.setFontSize(10);
+        for (const opt of q.options || []) { doc.circle(M + 11, oy - 1.3, 2); doc.text(opt, M + 16, oy); oy += 7; }
+        doc.setFontSize(8).setTextColor(120).text('Tick one', W - M, y + 4, { align: 'right' }); doc.setTextColor(0);
+      } else {
+        doc.setDrawColor(60).setLineWidth(0.4).roundedRect(W - M - 50, y - 1, 50, 12, 1.5, 1.5);
+        doc.setFontSize(7).setTextColor(150).text('Answer', W - M - 49, y + 2); doc.setTextColor(0);
+      }
+      if (q.working_space) {
+        const wy = y + Math.max(lines.length * 5, 12) + 2;
+        doc.setDrawColor(200).setLineWidth(0.2).rect(M + 8, wy, W - 2 * M - 8, 28);
+        doc.setFontSize(7).setTextColor(150).text('Working', M + 10, wy + 4); doc.setTextColor(0);
+      }
+      doc.setDrawColor(0).setLineWidth(0.2);
+      y += h2 + 3;
+    }
+    footer();
+  });
+  doc.save(`${h.title} - ${c.name}.pdf`);
 }
 
 start();
