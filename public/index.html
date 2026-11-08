@@ -434,9 +434,14 @@ async function loadForRole() {
       .select('class_id, year_group, class, name, staff_id, ta_staff_id, valid_to')
       .gt('valid_to', new Date().toISOString())
       .order('year_group').order('class'),
-    sb.from('staff').select('staff_id, first_name, second_name, salutation, email, photo_path, roles(role_1, access_level)').order('second_name'),
+    sb.from('staff').select('staff_id, first_name, second_name, salutation, email, phone, photo_path, roles(role_1, access_level)').order('second_name'),
   ]);
   check(pupils, classes, staff);
+  if (lvl === 1 || lvl === 2) {
+    const roles = await sb.from('roles').select('role_id, role_1, access_level').order('access_level');
+    check(roles);
+    state.roles = roles.data;
+  }
   state.pupils = pupils.data;
   state.classes = classes.data;
   state.staff = staff.data.map((s) => ({ ...s, role: s.roles?.role_1, level: s.roles?.access_level }));
@@ -796,7 +801,7 @@ function renderLeadership() {
       ${item('Classes with a TA', state.classes.filter((c) => c.ta_staff_id).length, n)}
     </div>
     <div id="view"></div>`;
-  $('app').querySelectorAll('.step').forEach((b) => b.addEventListener('click', () => { state.tab = b.dataset.tab; state.pupilEdit = null; render(); }));
+  $('app').querySelectorAll('.step').forEach((b) => b.addEventListener('click', () => { state.tab = b.dataset.tab; state.pupilEdit = null; state.staffEdit = null; render(); }));
   ({ years: renderYears, classes: renderClasses, staff: renderStaffAssign, pupils: renderPupilsAdmin, people: renderPeople, photos: renderPhotos, registers: renderRegisters })[state.tab]();
 }
 
@@ -1122,14 +1127,70 @@ function renderStaffAssign() {
 }
 
 function renderPeople() {
+  if (state.staffEdit) return renderStaffForm();
   const people = state.staff.filter((s) => s.staff_id !== state.me.staff_id).sort((a, b) => a.level - b.level || a.second_name.localeCompare(b.second_name));
   const classOf = (s) => state.classes.filter((c) => c.staff_id === s.staff_id || c.ta_staff_id === s.staff_id).map((c) => c.name).join(', ');
   $('view').innerHTML = `
-    <p class="hint">Staff you can see: everyone with a higher access-level number than you.</p>
+    <div class="toolbar"><span class="hint" style="margin:0">Staff you can see and manage: everyone with a higher access-level number than you. Tap someone to edit.</span>
+      <span class="spacer"></span><button class="btn primary small" id="addStaff">Add staff</button></div>
     <table class="table"><tr><th>ID</th><th>Name</th><th>Role</th><th>Class</th><th>Email</th></tr>
-      ${people.map((s) => `<tr><td>${s.staff_id}</td><td><span class="who-cell">${avatar(s, 30)}<span>${esc(staffName(s))} <span class="hint">${esc(s.first_name)}</span></span></span></td>
+      ${people.map((s) => `<tr class="clickable" data-sid="${s.staff_id}"><td>${s.staff_id}</td><td><span class="who-cell">${avatar(s, 30)}<span>${esc(staffName(s))} <span class="hint">${esc(s.first_name)}</span></span></span></td>
         <td>${esc(roleName(s.role))}</td><td>${esc(classOf(s))}</td><td>${esc(s.email)}</td></tr>`).join('')}
     </table>`;
+  $('addStaff').addEventListener('click', () => { state.staffEdit = 'new'; render(); });
+  document.querySelectorAll('tr[data-sid]').forEach((r) => r.addEventListener('click', () => { state.staffEdit = Number(r.dataset.sid); render(); }));
+}
+
+const SALUTATIONS = ['Mr', 'Mrs', 'Ms', 'Miss', 'Mx', 'Dr'];
+
+function renderStaffForm() {
+  const isNew = state.staffEdit === 'new';
+  const s = isNew ? { salutation: 'Ms' } : state.staff.find((x) => x.staff_id === state.staffEdit);
+  if (!s) { state.staffEdit = null; return render(); }
+  // Only roles below your own level (and never LA admin) can be given
+  const roles = (state.roles || []).filter((r) => r.access_level > state.me.access_level);
+  const currentRole = isNew ? roles.find((r) => r.role_1 === 'teacher')?.role_id : (state.roles || []).find((r) => r.role_1 === s.role)?.role_id;
+  $('view').innerHTML = `
+    <p><button class="btn small" id="back">← Staff</button></p>
+    <form class="panel" id="staffForm">
+      <div class="hw-top"><span class="who-cell">${isNew ? '' : avatar(s, 48)}<h3 style="margin:0">${isNew ? 'New staff member' : esc(staffName(s))}</h3></span>
+        ${isNew ? '' : `<span class="hint">#${s.staff_id}</span>`}</div>
+      <div class="form-row" style="margin-top:8px">
+        <div style="max-width:120px"><label class="f">Title</label><select class="field" name="salutation">${SALUTATIONS.map((t) => `<option ${s.salutation === t ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        <div><label class="f">First name</label><input class="field" name="first_name" value="${esc(s.first_name ?? '')}" required></div>
+        <div><label class="f">Last name</label><input class="field" name="second_name" value="${esc(s.second_name ?? '')}" required></div>
+      </div>
+      <div class="form-row">
+        <div><label class="f">Email</label><input class="field" type="email" name="email" value="${esc(s.email ?? '')}"></div>
+        <div><label class="f">Phone</label><input class="field" type="tel" name="phone" value="${esc(s.phone ?? '')}"></div>
+        <div><label class="f">Role</label><select class="field" name="role_id" required>${roles.map((r) => `<option value="${r.role_id}" ${r.role_id === currentRole ? 'selected' : ''}>${esc(roleName(r.role_1))}</option>`).join('')}</select></div>
+      </div>
+      <p class="hint" style="margin:12px 0 0">Classes are given to teachers and TAs on the Teachers &amp; TAs tab. Photos are added on the Photos tab.</p>
+      <div class="toolbar" style="margin:16px 0 0"><span class="spacer"></span>
+        <button class="btn" type="button" id="cancel">Cancel</button>
+        <button class="btn primary" type="submit">${isNew ? 'Add staff member' : 'Save changes'}</button></div>
+    </form>`;
+  const back = () => { state.staffEdit = null; render(); };
+  $('back').addEventListener('click', back);
+  $('cancel').addEventListener('click', back);
+  $('staffForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const row = {
+      salutation: f.salutation.value, first_name: f.first_name.value.trim(), second_name: f.second_name.value.trim(),
+      email: f.email.value.trim().toLowerCase() || null, phone: f.phone.value.trim() || null, role_id: Number(f.role_id.value),
+    };
+    if (row.phone && !/^\+?[0-9 ()-]{7,20}$/.test(row.phone)) return toast("That phone number doesn't look right", true);
+    if (row.phone) row.phone = row.phone.replace(/[^\d+]/g, '');
+    const res = isNew
+      ? await sb.from('staff').insert({ ...row, school_id: state.me.school_id })
+      : await sb.from('staff').update(row).eq('staff_id', s.staff_id);
+    if (res.error) return toast(res.error.message, true);
+    toast(isNew ? `${row.first_name} ${row.second_name} added` : 'Saved');
+    await loadForRole();
+    state.staffEdit = null;
+    render();
+  });
 }
 
 function registerControls(classes) {

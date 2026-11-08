@@ -1,6 +1,6 @@
 // Service worker: keeps the app shell so new versions only switch over when the user taps Update.
 // Bump VERSION with every release.
-const VERSION = 1;
+const VERSION = 2;
 const CACHE = `school-v${VERSION}`;
 const SHELL = ['/', '/index.html', '/icon.svg', '/icon-192.png', '/apple-touch-icon.png', '/manifest.webmanifest'];
 
