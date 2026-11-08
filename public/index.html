@@ -1934,7 +1934,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (lsGet('school.justUpdated') && !reloaded) { reloaded = true; location.reload(); }
   });
-  navigator.serviceWorker.register('/sw.js').then(async (reg) => {
+  navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(async (reg) => {
     swReg = reg;
     appVersion = await askVersion(navigator.serviceWorker.controller || reg.active || reg.installing);
     showVersion();

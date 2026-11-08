@@ -1,12 +1,27 @@
 // Service worker: keeps the app shell so new versions only switch over when the user taps Update.
 // Bump VERSION with every release.
-const VERSION = 2;
+const VERSION = 3;
 const CACHE = `school-v${VERSION}`;
-const SHELL = ['/', '/index.html', '/icon.svg', '/icon-192.png', '/apple-touch-icon.png', '/manifest.webmanifest'];
+// Only exact URLs Cloudflare serves without a redirect ("/index.html" redirects to "/").
+const SHELL = ['/', '/icon.svg', '/icon-192.png', '/apple-touch-icon.png', '/manifest.webmanifest'];
+// Versions 1–2 could break page loads on Safari; take over from them straight away.
+const REPLACE_BROKEN = true;
+
+// Never store a redirected response: browsers refuse to use one for a page load.
+async function cleanCopy(res) {
+  if (!res.redirected) return res;
+  return new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers });
+}
 
 self.addEventListener('install', (e) => {
-  // Don't skipWaiting: the page shows an Update button and asks us to switch when the user taps it.
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
+  e.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    for (const url of SHELL) {
+      const res = await fetch(url, { cache: 'reload' });
+      if (res.ok) await cache.put(url, await cleanCopy(res));
+    }
+    if (REPLACE_BROKEN) await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (e) => {
@@ -24,10 +39,14 @@ self.addEventListener('message', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;   // Supabase, CDNs, /api: straight to the network
-  const path = url.pathname === '/' ? '/index.html' : url.pathname;
-  if (!SHELL.includes(path)) return;                                            // e.g. the family page h.html is always fresh
+  const isPage = e.request.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html');
+  const key = isPage ? '/' : url.pathname;
+  if (!SHELL.includes(key)) return;                                             // e.g. the family page h.html is always fresh
   e.respondWith((async () => {
-    const cache = await caches.open(CACHE);
-    return (await cache.match(path)) || fetch(e.request);
+    try {
+      const cached = await (await caches.open(CACHE)).match(key);
+      if (cached && !cached.redirected) return cached;
+    } catch {}
+    return fetch(e.request);   // anything odd: fall back to the network rather than fail
   })());
 });
