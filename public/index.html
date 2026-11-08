@@ -455,8 +455,12 @@ function avatar(person, size = 28) {
   if (url) return `<img class="avatar" style="--s:${size}px" src="${esc(url)}" alt="" draggable="false">`;
   const isPupil = person.pupil_id != null;
   const look = isPupil ? lookFromName(person.first_name) : lookFromTitle(person.salutation);
-  return `<img class="avatar" style="--s:${size}px" src="${funFace((isPupil ? 'p' : 's') + (person.pupil_id ?? person.staff_id ?? 0), !isPupil, look)}" alt="" draggable="false">`;
+  const seed = (isPupil ? 'p' : 's') + (person.pupil_id ?? person.staff_id ?? 0);
+  return `<img class="avatar" style="--s:${size}px" src="${funFace(seed, !isPupil, look, FACE_OVERRIDES[seed])}" alt="" draggable="false">`;
 }
+
+// Hand-picked tweaks to particular cartoon faces
+const FACE_OVERRIDES = { p121: { hair: '#6b3f22' } }; // Isla: brown hair
 
 // Only used to pick a cartoon hairstyle. Unknown or either-way names get any style.
 const BOY_NAMES = new Set('oliver george noah arthur leo harry muhammad mohammed jack theo oscar alfie jacob finley reggie henry archie rory kai ethan james thomas william edward alexander freddie teddy lucas oscar isaac max joshua samuel daniel adam ben benjamin tom dylan logan harrison hugo arlo elijah jude louie ronnie albert ollie jaxon toby zac zachary ryan aaron omar yusuf ibrahim ali david matt mark paul peter simon steve chris richard andrew imran ravi'.split(' '));
@@ -473,17 +477,20 @@ function lookFromTitle(t) {
 /* ---------- Fun cartoon faces for people without a photo ---------- */
 // Deterministic: the same person always gets the same face.
 const faceCache = new Map();
-function funFace(seed, adult, look = null) {
-  const key = seed + (adult ? 'a' : 'c') + (look || 'n');
+function funFace(seed, adult, look = null, over = {}) {
+  over = over || {};
+  const base = seed + (adult ? 'a' : 'c') + (look || 'n');
+  const key = base + JSON.stringify(over);
   if (faceCache.has(key)) return faceCache.get(key);
   let h = 2166136261;
-  for (const ch of key) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  for (const ch of base) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
   const rnd = () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
   const pick = (a) => a[Math.floor(rnd() * a.length)];
 
   const bg = pick(['#cfe8d9', '#f9dfb8', '#d6e2f5', '#f3d3df', '#e3dcf3', '#d8efe9', '#fbe7a6', '#e9e1d2']);
   const skin = pick(['#f8d9c0', '#f1c7a3', '#e0a87a', '#c68a5c', '#a86b42', '#7d4d2c', '#5c3820']);
-  const hair = pick(['#2b1d14', '#4a2e1b', '#7a4a24', '#b5652b', '#d9a441', '#e8cf8a', '#1e1e1e', ...(adult ? ['#8a8a8a', '#bdbdbd'] : [])]);
+  const hairPick = pick(['#2b1d14', '#4a2e1b', '#7a4a24', '#b5652b', '#d9a441', '#e8cf8a', '#1e1e1e', ...(adult ? ['#8a8a8a', '#bdbdbd'] : [])]);
+  const hair = over.hair || hairPick; // pick first so the rest of the face stays the same
   const styles = look === 'm' ? ['short', 'side', 'spiky', 'curly', 'short', 'side', ...(adult ? ['bald'] : [])]
     : look === 'f' ? ['long', 'long', 'bun', 'bob', 'long', 'curly', ...(adult ? ['bun'] : ['pigtails', 'pigtails'])]
     : ['short', 'side', 'bob', 'bun', 'curly', 'long', 'spiky', ...(adult ? ['bald'] : ['pigtails'])];
