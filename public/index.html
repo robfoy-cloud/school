@@ -95,6 +95,19 @@
 
   .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
     cursor: grab; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  .card { display: flex; align-items: center; gap: 9px; }
+  .card .txt { min-width: 0; flex: 1; }
+  .avatar { width: var(--s); height: var(--s); border-radius: 50%; object-fit: cover; flex: none;
+    display: inline-grid; place-items: center; font-size: calc(var(--s) * .38); font-weight: 600; color: #fff;
+    vertical-align: middle; -webkit-user-drag: none; }
+  .who-cell { display: flex; align-items: center; gap: 10px; }
+  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .photo-tile { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 10px 10px;
+    text-align: center; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .photo-tile .nm { font-weight: 500; font-size: 14px; line-height: 1.2; }
+  .photo-tile .rl { font-size: 12px; color: var(--muted); margin-top: -4px; }
+  .photo-tile .acts { display: flex; gap: 6px; margin-top: 2px; }
+  .photo-tile.busy { opacity: .5; pointer-events: none; }
   .card .name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; }
   .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; }
@@ -224,7 +237,7 @@ const ROLE_NAMES = {
   head_of_key_stage: 'Head of key stage', teacher: 'Teacher', teaching_assistant: 'Teaching assistant',
 };
 
-const state = { me: null, pupils: [], classes: [], staff: [], tab: 'years', classYear: 1,
+const state = { me: null, pupils: [], classes: [], staff: [], tab: 'years', classYear: 1, photoGroup: 'staff',
   regDate: todayISO(), regSession: new Date().getHours() < 12 ? 'AM' : 'PM', regClass: null, attendance: [] };
 let sortables = [];
 
@@ -361,13 +374,13 @@ async function loadForRole() {
   // Everyone else: whatever the database lets this person see
   const [pupils, classes, staff] = await Promise.all([
     sb.from('pupils_with_year')
-      .select('pupil_id, first_name, last_name, date_of_birth, year_offset, dob_year_group, year_group, class_id')
+      .select('pupil_id, first_name, last_name, date_of_birth, year_offset, dob_year_group, year_group, class_id, photo_path')
       .order('last_name').order('first_name'),
     sb.from('classes')
       .select('class_id, year_group, class, name, staff_id, ta_staff_id, valid_to')
       .gt('valid_to', new Date().toISOString())
       .order('year_group').order('class'),
-    sb.from('staff').select('staff_id, first_name, second_name, salutation, email, roles(role_1, access_level)').order('second_name'),
+    sb.from('staff').select('staff_id, first_name, second_name, salutation, email, photo_path, roles(role_1, access_level)').order('second_name'),
   ]);
   check(pupils, classes, staff);
   state.pupils = pupils.data;
@@ -375,7 +388,63 @@ async function loadForRole() {
   state.staff = staff.data.map((s) => ({ ...s, role: s.roles?.role_1, level: s.roles?.access_level }));
   if (!state.classes.some((c) => c.year_group === state.classYear) && state.classes.length) state.classYear = state.classes[0].year_group;
   if (!state.classes.some((c) => c.class_id === state.regClass)) state.regClass = state.classes[0]?.class_id ?? null;
-  await loadAttendance();
+  await Promise.all([loadAttendance(), refreshPhotoUrls()]);
+}
+
+/* ---------- Photos ---------- */
+
+const PHOTO_BUCKET = 'school-photos';
+const photoUrls = new Map(); // storage path -> temporary signed URL
+
+async function refreshPhotoUrls() {
+  const paths = [...state.pupils, ...state.staff].map((x) => x.photo_path).filter((p) => p && !photoUrls.has(p));
+  if (!paths.length) return;
+  const { data, error } = await sb.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 6 * 3600);
+  if (error) return console.warn(error.message);
+  for (const d of data) if (d.signedUrl) photoUrls.set(d.path, d.signedUrl);
+}
+
+const AVATAR_COLOURS = ['#2f6b4f', '#b7791f', '#4a6fa5', '#9b4d6e', '#5b7f3a', '#7a5c99', '#b4423a', '#3d7a7a'];
+function avatar(person, size = 28) {
+  const url = person.photo_path && photoUrls.get(person.photo_path);
+  if (url) return `<img class="avatar" style="--s:${size}px" src="${esc(url)}" alt="" draggable="false">`;
+  const first = person.first_name ?? '';
+  const last = person.last_name ?? person.second_name ?? '';
+  const initials = ((first[0] ?? '') + (last[0] ?? '')).toUpperCase();
+  const id = person.pupil_id ?? person.staff_id ?? 0;
+  return `<span class="avatar" style="--s:${size}px;background:${AVATAR_COLOURS[id % AVATAR_COLOURS.length]}">${esc(initials)}</span>`;
+}
+
+// Square-crop and shrink on the device before uploading
+async function toSquareJpeg(file, size = 480) {
+  const bmp = await createImageBitmap(file);
+  const s = Math.min(bmp.width, bmp.height);
+  const out = Math.min(size, s);
+  const c = document.createElement('canvas');
+  c.width = c.height = out;
+  c.getContext('2d').drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, out, out);
+  return new Promise((resolve) => c.toBlob(resolve, 'image/jpeg', 0.85));
+}
+
+async function setPhoto(kind, id, file) {
+  const person = kind === 'pupils' ? state.pupils.find((p) => p.pupil_id === id) : staffById(id);
+  let newPath = null;
+  if (file) {
+    const blob = await toSquareJpeg(file);
+    newPath = `${kind}/${id}/${Date.now()}.jpg`;
+    const up = await sb.storage.from(PHOTO_BUCKET).upload(newPath, blob, { contentType: 'image/jpeg' });
+    if (up.error) { toast(up.error.message, true); return false; }
+  }
+  const { data: oldPath, error } = await sb.rpc('school_set_photo', { kind, target: id, new_path: newPath });
+  if (error) {
+    toast(error.message, true);
+    if (newPath) await sb.storage.from(PHOTO_BUCKET).remove([newPath]);
+    return false;
+  }
+  if (oldPath) { await sb.storage.from(PHOTO_BUCKET).remove([oldPath]); photoUrls.delete(oldPath); }
+  person.photo_path = newPath;
+  await refreshPhotoUrls();
+  return true;
 }
 
 async function loadAttendance() {
@@ -565,7 +634,7 @@ function renderAdmin() {
 
 /* Heads and deputies */
 function renderLeadership() {
-  const tabs = [['years', 'Year groups'], ['classes', 'Classes'], ['staff', 'Teachers & TAs'], ['people', 'Staff'], ['registers', 'Registers']];
+  const tabs = [['years', 'Year groups'], ['classes', 'Classes'], ['staff', 'Teachers & TAs'], ['people', 'Staff'], ['photos', 'Photos'], ['registers', 'Registers']];
   const inClass = state.pupils.filter((p) => p.class_id).length;
   const n = state.classes.length;
   const item = (label, a, b) => `<span class="${a === b ? 'done' : ''}">${label} <b>${a}/${b}</b></span>`;
@@ -578,7 +647,62 @@ function renderLeadership() {
     </div>
     <div id="view"></div>`;
   $('app').querySelectorAll('.step').forEach((b) => b.addEventListener('click', () => { state.tab = b.dataset.tab; render(); }));
-  ({ years: renderYears, classes: renderClasses, staff: renderStaffAssign, people: renderPeople, registers: renderRegisters })[state.tab]();
+  ({ years: renderYears, classes: renderClasses, staff: renderStaffAssign, people: renderPeople, photos: renderPhotos, registers: renderRegisters })[state.tab]();
+}
+
+function renderPhotos() {
+  const groups = [['staff', 'Staff'], ...YEARS.filter((y) => state.pupils.some((p) => p.year_group === y)).map((y) => [String(y), yearLabel(y)])];
+  if (!groups.some(([k]) => k === state.photoGroup)) state.photoGroup = 'staff';
+  const g = state.photoGroup;
+  const people = g === 'staff'
+    ? [...state.staff].sort((a, b) => (a.staff_id === state.me.staff_id ? -1 : b.staff_id === state.me.staff_id ? 1 : a.level - b.level))
+        .map((s) => ({ kind: 'staff', id: s.staff_id, person: s, name: staffName(s), sub: s.staff_id === state.me.staff_id ? 'You' : roleName(s.role) }))
+    : state.pupils.filter((p) => p.year_group === Number(g))
+        .map((p) => ({ kind: 'pupils', id: p.pupil_id, person: p, name: pupilName(p), sub: classById(p.class_id)?.name ?? 'No class' }));
+  const missing = (list) => list.filter((x) => !x.photo_path).length;
+  const groupMissing = (k) => missing(k === 'staff' ? state.staff : state.pupils.filter((p) => p.year_group === Number(k)));
+
+  $('view').innerHTML = `
+    <div class="toolbar">${groups.map(([k, l]) => {
+      const m = groupMissing(k);
+      return `<button class="pill ${k === g ? 'active' : ''}" data-g="${k}">${l}${m ? ` <span style="opacity:.7">${m} missing</span>` : ' ✓'}</button>`;
+    }).join('')}</div>
+    <p class="hint">Tap Add to take or choose a photo. Photos are cropped square and shrunk before upload, and only people allowed to see that person can see their photo.</p>
+    <input type="file" accept="image/*" id="photoInput" class="hidden">
+    <div class="photo-grid">${people.map((x) => `
+      <div class="photo-tile" data-kind="${x.kind}" data-id="${x.id}">
+        ${avatar(x.person, 84)}
+        <div class="nm">${esc(x.name)}</div>
+        <div class="rl">${esc(x.sub)}</div>
+        <div class="acts">
+          <button class="btn small ${x.person.photo_path ? '' : 'primary'}" data-act="add">${x.person.photo_path ? 'Change' : 'Add'}</button>
+          ${x.person.photo_path ? '<button class="btn small" data-act="remove">Remove</button>' : ''}
+        </div>
+      </div>`).join('')}
+    </div>`;
+
+  document.querySelectorAll('#view .pill').forEach((b) => b.addEventListener('click', () => { state.photoGroup = b.dataset.g; render(); }));
+  const input = $('photoInput');
+  let target = null;
+  input.addEventListener('change', async () => {
+    const file = input.files[0];
+    input.value = '';
+    if (!file || !target) return;
+    target.tile.classList.add('busy');
+    if (await setPhoto(target.kind, target.id, file)) toast('Photo saved');
+    render();
+  });
+  document.querySelectorAll('.photo-tile').forEach((tile) => {
+    const kind = tile.dataset.kind;
+    const id = Number(tile.dataset.id);
+    tile.querySelector('[data-act="add"]').addEventListener('click', () => { target = { kind, id, tile }; input.click(); });
+    tile.querySelector('[data-act="remove"]')?.addEventListener('click', async () => {
+      if (!confirm('Remove this photo?')) return;
+      tile.classList.add('busy');
+      if (await setPhoto(kind, id, null)) toast('Photo removed');
+      render();
+    });
+  });
 }
 
 function pupilCard(p, { showClass = false } = {}) {
@@ -588,10 +712,10 @@ function pupilCard(p, { showClass = false } = {}) {
   const cls = p.class_id ? classById(p.class_id) : null;
   if (showClass && cls) tags.push(`<span class="tag green">${esc(cls.name)}</span>`);
   if (cls && cls.year_group !== p.year_group) tags.push(`<span class="tag red">class is ${yearLabel(cls.year_group)}</span>`);
-  return `<div class="card" data-id="${p.pupil_id}">
+  return `<div class="card" data-id="${p.pupil_id}">${avatar(p, 30)}<div class="txt">
     <div class="name">${esc(pupilName(p))}</div>
     <div class="meta"><span>${fmtDate(p.date_of_birth)}</span>${tags.join('')}</div>
-  </div>`;
+  </div></div>`;
 }
 
 function renderYears() {
@@ -671,10 +795,10 @@ function renderClasses() {
 
 function staffCard(s) {
   const note = s.role === 'head_of_key_stage' || s.role === 'deputy_headteacher' ? roleName(s.role) : '';
-  return `<div class="card" data-id="${s.staff_id}">
+  return `<div class="card" data-id="${s.staff_id}">${avatar(s, 30)}<div class="txt">
     <div class="name">${esc(staffName(s))}</div>
     <div class="meta"><span>${esc(s.first_name)}</span>${note ? `<span class="tag green">${note}</span>` : ''}</div>
-  </div>`;
+  </div></div>`;
 }
 
 function renderStaffAssign() {
@@ -725,7 +849,7 @@ function renderPeople() {
   $('view').innerHTML = `
     <p class="hint">Staff you can see: everyone with a higher access-level number than you.</p>
     <table class="table"><tr><th>ID</th><th>Name</th><th>Role</th><th>Class</th><th>Email</th></tr>
-      ${people.map((s) => `<tr><td>${s.staff_id}</td><td>${esc(staffName(s))} <span class="hint">${esc(s.first_name)}</span></td>
+      ${people.map((s) => `<tr><td>${s.staff_id}</td><td><span class="who-cell">${avatar(s, 30)}<span>${esc(staffName(s))} <span class="hint">${esc(s.first_name)}</span></span></span></td>
         <td>${esc(roleName(s.role))}</td><td>${esc(classOf(s))}</td><td>${esc(s.email)}</td></tr>`).join('')}
     </table>`;
 }
@@ -758,7 +882,7 @@ function registerTable(pupils, editable) {
     </div>
     <table class="table">${pupils.map((p) => {
       const s = statusOf(p.pupil_id);
-      return `<tr class="reg-row"><td>${esc(pupilName(p))}</td><td>${editable
+      return `<tr class="reg-row"><td><span class="who-cell">${avatar(p, 34)}${esc(pupilName(p))}</span></td><td>${editable
         ? ['present', 'late', 'absent'].map((k) => `<button class="mark ${k} ${s === k ? 'on' : ''}" data-id="${p.pupil_id}" data-k="${k}">${STATUS_LABEL[k]}</button>`).join('')
         : `<span class="status ${s ?? 'none'}">${s ? STATUS_LABEL[s] : 'Not marked'}</span>`}</td></tr>`;
     }).join('')}</table>`;
@@ -797,7 +921,7 @@ function renderClassView() {
   if (!isTeacher) {
     $('app').innerHTML = head + (pupils.length ? `
       <table class="table"><tr><th>Pupil</th><th>Date of birth</th></tr>
-        ${pupils.map((p) => `<tr><td>${esc(pupilName(p))}</td><td>${fmtDate(p.date_of_birth)}</td></tr>`).join('')}
+        ${pupils.map((p) => `<tr><td><span class="who-cell">${avatar(p, 34)}${esc(pupilName(p))}</span></td><td>${fmtDate(p.date_of_birth)}</td></tr>`).join('')}
       </table>` : `<div class="empty">No pupils in this class yet.</div>`);
     return;
   }
