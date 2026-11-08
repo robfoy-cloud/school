@@ -196,6 +196,8 @@ Also give a one or two sentence summary for the teacher, including any pattern i
 
 /* ---------- Claude ---------- */
 
+// Newer models don't allow forcing a specific tool, so we offer the one tool, tell the
+// model to use it, and fall back to reading JSON from the text reply if it doesn't.
 async function claude(env, messages, tool, maxTokens) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -207,16 +209,22 @@ async function claude(env, messages, tool, maxTokens) {
     body: JSON.stringify({
       model: env.CLAUDE_MODEL || MODEL,
       max_tokens: maxTokens,
+      system: `Always respond by calling the ${tool.name} tool exactly once with your complete result. Do not reply with plain text.`,
       tools: [tool],
-      tool_choice: { type: 'tool', name: tool.name },
+      tool_choice: { type: 'auto' },
       messages,
     }),
   });
   const data = await res.json();
   if (!res.ok) throw httpError(`AI error: ${data?.error?.message || res.status}`, 502);
-  const use = (data.content || []).find((c) => c.type === 'tool_use');
-  if (!use) throw httpError('AI did not return a result', 502);
-  return use.input;
+  const use = (data.content || []).find((c) => c.type === 'tool_use' && c.name === tool.name);
+  if (use) return use.input;
+  const text = (data.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+  const start = text.indexOf('{'), end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch {}
+  }
+  throw httpError('The AI did not return a usable result. Please try again.', 502);
 }
 
 /* ---------- Supabase as the signed-in user ---------- */
