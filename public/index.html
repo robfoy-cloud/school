@@ -454,14 +454,27 @@ function avatar(person, size = 28) {
   const url = person.photo_path && photoUrls.get(person.photo_path);
   if (url) return `<img class="avatar" style="--s:${size}px" src="${esc(url)}" alt="" draggable="false">`;
   const isPupil = person.pupil_id != null;
-  return `<img class="avatar" style="--s:${size}px" src="${funFace((isPupil ? 'p' : 's') + (person.pupil_id ?? person.staff_id ?? 0), !isPupil)}" alt="" draggable="false">`;
+  const look = isPupil ? lookFromName(person.first_name) : lookFromTitle(person.salutation);
+  return `<img class="avatar" style="--s:${size}px" src="${funFace((isPupil ? 'p' : 's') + (person.pupil_id ?? person.staff_id ?? 0), !isPupil, look)}" alt="" draggable="false">`;
+}
+
+// Only used to pick a cartoon hairstyle. Unknown or either-way names get any style.
+const BOY_NAMES = new Set('oliver george noah arthur leo harry muhammad mohammed jack theo oscar alfie jacob finley reggie henry archie rory kai ethan james thomas william edward alexander freddie teddy lucas oscar isaac max joshua samuel daniel adam ben benjamin tom dylan logan harrison hugo arlo elijah jude louie ronnie albert ollie jaxon toby zac zachary ryan aaron omar yusuf ibrahim ali david matt mark paul peter simon steve chris richard andrew imran ravi'.split(' '));
+const GIRL_NAMES = new Set('amelia isabella ava mia freya lily grace evie sophia sophie poppy rosie zara ella maya willow hannah aisha phoebe ivy matilda isla olivia emily ruby florence sienna ellie daisy chloe millie esme harper aria luna mila evelyn rose may jane louise emma sarah laura rachel jessica amy nicola kate priya fatima joanna helen claire megan lucy chloe karen anita nadia zoe olivia'.split(' '));
+function lookFromName(first) {
+  const n = String(first || '').toLowerCase().trim();
+  return BOY_NAMES.has(n) ? 'm' : GIRL_NAMES.has(n) ? 'f' : null;
+}
+function lookFromTitle(t) {
+  const s = String(t || '').toLowerCase().replace('.', '');
+  return s === 'mr' ? 'm' : ['mrs', 'ms', 'miss'].includes(s) ? 'f' : null;
 }
 
 /* ---------- Fun cartoon faces for people without a photo ---------- */
 // Deterministic: the same person always gets the same face.
 const faceCache = new Map();
-function funFace(seed, adult) {
-  const key = seed + (adult ? 'a' : 'c');
+function funFace(seed, adult, look = null) {
+  const key = seed + (adult ? 'a' : 'c') + (look || 'n');
   if (faceCache.has(key)) return faceCache.get(key);
   let h = 2166136261;
   for (const ch of key) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
@@ -471,7 +484,10 @@ function funFace(seed, adult) {
   const bg = pick(['#cfe8d9', '#f9dfb8', '#d6e2f5', '#f3d3df', '#e3dcf3', '#d8efe9', '#fbe7a6', '#e9e1d2']);
   const skin = pick(['#f8d9c0', '#f1c7a3', '#e0a87a', '#c68a5c', '#a86b42', '#7d4d2c', '#5c3820']);
   const hair = pick(['#2b1d14', '#4a2e1b', '#7a4a24', '#b5652b', '#d9a441', '#e8cf8a', '#1e1e1e', ...(adult ? ['#8a8a8a', '#bdbdbd'] : [])]);
-  const style = pick(adult ? ['short', 'side', 'bob', 'bun', 'curly', 'bald', 'long', 'spiky'] : ['short', 'side', 'bob', 'bun', 'curly', 'long', 'spiky', 'pigtails']);
+  const styles = look === 'm' ? ['short', 'side', 'spiky', 'curly', 'short', 'side', ...(adult ? ['bald'] : [])]
+    : look === 'f' ? ['long', 'long', 'bun', 'bob', 'long', 'curly', ...(adult ? ['bun'] : ['pigtails', 'pigtails'])]
+    : ['short', 'side', 'bob', 'bun', 'curly', 'long', 'spiky', ...(adult ? ['bald'] : ['pigtails'])];
+  const style = pick(styles);
   const eyes = pick(['dots', 'happy', 'wide', 'dots', 'wink']);
   const mouth = pick(['smile', 'grin', 'smile', 'tongue', 'open']);
   const glasses = rnd() < (adult ? 0.35 : 0.12);
