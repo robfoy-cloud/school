@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#2f6b4f"/>
+  <!-- face -->
+  <circle cx="256" cy="300" r="148" fill="#f7c948"/>
+  <circle cx="190" cy="340" r="22" fill="#f29e7d" opacity=".6"/>
+  <circle cx="322" cy="340" r="22" fill="#f29e7d" opacity=".6"/>
+  <ellipse cx="206" cy="292" rx="15" ry="20" fill="#1f2a24"/>
+  <ellipse cx="306" cy="292" rx="15" ry="20" fill="#1f2a24"/>
+  <path d="M196 352 Q256 410 316 352" fill="none" stroke="#1f2a24" stroke-width="16" stroke-linecap="round"/>
+  <!-- mortarboard: cap band -->
+  <path d="M166 180 L166 226 Q256 262 346 226 L346 180 Z" fill="#1f2a24"/>
+  <!-- board -->
+  <path d="M256 92 L436 160 L256 228 L76 160 Z" fill="#26332c"/>
+  <path d="M256 92 L436 160 L256 228 L76 160 Z" fill="none" stroke="#3b4a41" stroke-width="4" stroke-linejoin="round"/>
+  <!-- tassel -->
+  <circle cx="256" cy="160" r="10" fill="#e8a33d"/>
+  <path d="M256 160 L392 196 L392 262" fill="none" stroke="#e8a33d" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M380 258 L404 258 L410 298 L374 298 Z" fill="#e8a33d"/>
+</svg>
