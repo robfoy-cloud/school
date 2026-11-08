@@ -1,0 +1,9 @@
+{
+  // Static site served by Cloudflare Workers. The page talks to Supabase directly;
+  // all access control is enforced by row-level security in the database.
+  "name": "school",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./public"
+  }
+}

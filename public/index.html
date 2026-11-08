@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>School</title>
+<style>
+  :root {
+    --bg: #f5f3ec;
+    --panel: #ffffff;
+    --ink: #1f2a24;
+    --muted: #6b766f;
+    --line: #e2ded2;
+    --green: #2f6b4f;
+    --green-soft: #e3efe7;
+    --amber: #b7791f;
+    --amber-soft: #fbf0dc;
+    --red: #b4423a;
+    --red-soft: #f8e3e1;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  button { font: inherit; cursor: pointer; color: inherit; }
+  input, select { font: inherit; }
+  .hidden { display: none !important; }
+
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; flex-wrap: wrap;
+    background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .school { color: var(--muted); font-size: 14px; }
+  header .spacer { flex: 1; }
+  .acting { font-size: 13px; background: var(--green-soft); color: var(--green); padding: 5px 10px; border-radius: 999px; }
+  .btn { border: 1px solid var(--line); background: var(--panel); padding: 8px 14px; border-radius: 999px; }
+  .btn:hover { border-color: var(--green); }
+  .btn.primary { background: var(--green); border-color: var(--green); color: #fff; }
+  .btn.small { padding: 5px 11px; font-size: 13px; }
+
+  main { padding: 16px 20px 60px; max-width: 1400px; margin: 0 auto; }
+  h2 { margin: 0 0 6px; font-size: 20px; }
+  .hint { color: var(--muted); font-size: 14px; margin: 0 0 14px; }
+
+  /* Login + act-as */
+  .card-panel { max-width: 380px; margin: 8vh auto; background: var(--panel); padding: 26px;
+    border-radius: var(--radius); border: 1px solid var(--line); }
+  .card-panel p { color: var(--muted); margin: 0 0 16px; }
+  label.f { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  .field { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  .card-panel .btn.primary { width: 100%; margin-top: 16px; padding: 11px; }
+  .error { color: var(--red); font-size: 14px; margin-top: 10px; min-height: 1em; }
+  .actas { max-width: 760px; margin: 4vh auto; }
+  .actas-row { display: flex; gap: 8px; margin: 10px 0 20px; }
+  .actas-row .field { max-width: 160px; }
+  .people { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; margin-bottom: 18px; }
+  .person { text-align: left; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+  .person:hover { border-color: var(--green); }
+  .person .id { color: var(--muted); font-size: 12px; float: right; }
+  .group-title { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 6px 0; }
+
+  /* Tabs + summary */
+  .steps { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .step { border: 1px solid var(--line); background: var(--panel); padding: 9px 16px; border-radius: 999px; }
+  .step .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--green-soft); color: var(--green); font-size: 12px; font-weight: 600; margin-right: 6px; }
+  .step.active { background: var(--green); color: #fff; border-color: var(--green); }
+  .step.active .n { background: #fff; }
+  .summary { display: flex; gap: 18px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .summary b { color: var(--ink); }
+  .summary .done b { color: var(--green); }
+
+  /* Boards */
+  .board { display: grid; gap: 12px; align-items: start; }
+  .years-board { grid-template-columns: repeat(var(--cols), minmax(150px, 1fr)); overflow-x: auto; padding-bottom: 6px; }
+  .col { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); display: flex; flex-direction: column; min-width: 0; }
+  .col-head { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 8px; }
+  .col-head h3 { margin: 0; font-size: 15px; }
+  .col-head .sub { color: var(--muted); font-size: 12px; }
+  .col-head .count { margin-left: auto; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .col-head .count.full { color: var(--red); font-weight: 600; }
+  .col.muted { background: #faf9f5; }
+  .list { padding: 8px; min-height: 80px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+    cursor: grab; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  .card .name { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .meta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 11px; padding: 1px 6px; border-radius: 999px; }
+  .tag.amber { background: var(--amber-soft); color: var(--amber); }
+  .tag.red { background: var(--red-soft); color: var(--red); }
+  .tag.green { background: var(--green-soft); color: var(--green); }
+  .sortable-ghost { opacity: .35; }
+  .sortable-chosen { box-shadow: 0 6px 18px rgba(0,0,0,.12); }
+
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+  .pill { border: 1px solid var(--line); background: var(--panel); padding: 6px 14px; border-radius: 999px; }
+  .pill.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .toolbar .spacer { flex: 1; }
+
+  .staff-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+  .pools { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 70px; max-height: calc(100vh - 90px); overflow: auto; }
+  .class-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; }
+  .class-card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+  .class-card h4 { margin: 0 0 8px; font-size: 15px; display: flex; gap: 8px; align-items: baseline; }
+  .class-card h4 .sub { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .slot-label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 6px 0 3px; }
+  .slot { min-height: 40px; border: 1.5px dashed var(--line); border-radius: 8px; padding: 3px; }
+  .slot:empty::before { content: attr(data-placeholder); display: block; color: #b0b6b1; font-size: 13px; padding: 8px; }
+  .slot .card { border-color: var(--green-soft); background: var(--green-soft); }
+  .pool .list { min-height: 60px; }
+
+  /* Tables */
+  .table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .table th, .table td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .table th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; background: #faf9f5; }
+  .table tr:last-child td { border-bottom: none; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  .add-form { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 18px; align-items: end; }
+  .add-form .field { width: auto; flex: 1; min-width: 120px; }
+
+  /* Register */
+  .reg-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .reg-head .field { width: auto; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--panel); }
+  .seg button { border: 0; background: none; padding: 7px 14px; }
+  .seg button.on { background: var(--ink); color: #fff; }
+  .reg-row td:last-child { text-align: right; white-space: nowrap; }
+  .mark { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 12px; margin-left: 4px; min-width: 84px; }
+  .mark.on.present { background: var(--green); border-color: var(--green); color: #fff; }
+  .mark.on.late { background: var(--amber); border-color: var(--amber); color: #fff; }
+  .mark.on.absent { background: var(--red); border-color: var(--red); color: #fff; }
+  .status { font-size: 13px; padding: 2px 9px; border-radius: 999px; }
+  .status.present { background: var(--green-soft); color: var(--green); }
+  .status.late { background: var(--amber-soft); color: var(--amber); }
+  .status.absent { background: var(--red-soft); color: var(--red); }
+  .status.none { color: var(--muted); }
+  .empty { background: var(--panel); border: 1px dashed var(--line); border-radius: var(--radius); padding: 28px; text-align: center; color: var(--muted); }
+
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff;
+    padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 20; max-width: 90vw; }
+  .toast.error { background: var(--red); }
+
+  @media (max-width: 900px) {
+    .staff-layout, .two-col { grid-template-columns: 1fr; }
+    .pools { position: static; max-height: none; flex-direction: row; }
+    .pools .col { flex: 1; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>School</h1>
+  <span class="school" id="schoolName"></span>
+  <span class="spacer"></span>
+  <span class="acting hidden" id="acting"></span>
+  <button class="btn small hidden" id="switchStaff">Switch staff</button>
+  <button class="btn small hidden" id="signOut">Sign out</button>
+</header>
+
+<section class="card-panel hidden" id="login">
+  <h2>Sign in</h2>
+  <p>Developer sign-in. After this you can act as any staff member.</p>
+  <form id="loginForm">
+    <label class="f" for="email">Email</label>
+    <input class="field" id="email" type="email" autocomplete="username" required>
+    <label class="f" for="password">Password</label>
+    <input class="field" id="password" type="password" autocomplete="current-password" required>
+    <button class="btn primary" type="submit">Sign in</button>
+    <div class="error" id="loginError"></div>
+  </form>
+</section>
+
+<section class="actas hidden" id="actas">
+  <h2>Act as a staff member</h2>
+  <p class="hint">Test login: enter a staff ID or pick someone. You'll see exactly what they're allowed to see.</p>
+  <form class="actas-row" id="actasForm">
+    <input class="field" id="actasId" type="number" min="1" placeholder="Staff ID" required>
+    <button class="btn primary" type="submit">Log in as</button>
+  </form>
+  <div class="error" id="actasError"></div>
+  <div id="peopleList"></div>
+</section>
+
+<main class="hidden" id="app"></main>
+
+<div class="toast hidden" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const SUPABASE_URL = 'https://veoxasldburbztzucyrn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Gwnaqzgzz-Abvn5hiQvhsw_32P5goIo'; // public key; data is protected by row-level security
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const MAX_PER_CLASS = 30;
+const YEARS = [0, 1, 2, 3, 4, 5, 6];
+const TEACHER_ROLES = ['teacher', 'head_of_key_stage', 'deputy_headteacher'];
+const TA_ROLES = ['teaching_assistant'];
+const ROLE_NAMES = {
+  la_admin: 'LA admin', headteacher: 'Headteacher', deputy_headteacher: 'Deputy headteacher',
+  head_of_key_stage: 'Head of key stage', teacher: 'Teacher', teaching_assistant: 'Teaching assistant',
+};
+
+const state = { me: null, pupils: [], classes: [], staff: [], tab: 'years', classYear: 1,
+  regDate: todayISO(), regSession: new Date().getHours() < 12 ? 'AM' : 'PM', regClass: null, attendance: [] };
+let sortables = [];
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const roleName = (r) => ROLE_NAMES[r] ?? r ?? '';
+const yearLabel = (y) => (y === 0 ? 'Reception' : `Year ${y}`);
+const fmtDate = (d) => (d ? new Date(d + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+const pupilName = (p) => `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim();
+const staffName = (s) => `${s.salutation ? s.salutation + ' ' : ''}${s.second_name ?? ''}`.trim();
+const classById = (id) => state.classes.find((c) => c.class_id === id);
+const staffById = (id) => state.staff.find((s) => s.staff_id === id);
+const classLabel = (c) => `${c.year_group}.${c.class}`;
+function todayISO() { return new Date().toLocaleDateString('en-CA'); }
+
+function toast(msg, isError = false) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.add('hidden'), isError ? 5000 : 2500);
+}
+
+function show(screen) {
+  for (const id of ['login', 'actas', 'app']) $(id).classList.toggle('hidden', id !== screen);
+  const inApp = screen === 'app';
+  $('acting').classList.toggle('hidden', !inApp);
+  $('switchStaff').classList.toggle('hidden', !(inApp && state.me?.is_dev_tester));
+  $('signOut').classList.toggle('hidden', screen === 'login');
+  if (!inApp) $('schoolName').textContent = '';
+}
+
+/* ---------- Sign-in and act-as ---------- */
+
+async function start() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return show('login');
+  const { data: act } = await sb.from('dev_act_as').select('staff_id').maybeSingle();
+  if (act) return enterAs();
+  const { data: list } = await sb.rpc('dev_staff_list');
+  if (list && list.length) return showActAs(list);
+  return enterAs(); // a real staff account without test access
+}
+
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('loginError').textContent = '';
+  const { error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('password').value });
+  if (error) { $('loginError').textContent = error.message; return; }
+  start();
+});
+
+$('signOut').addEventListener('click', async () => {
+  await sb.from('dev_act_as').delete().not('staff_id', 'is', null);
+  await sb.auth.signOut();
+  state.me = null;
+  show('login');
+});
+
+$('switchStaff').addEventListener('click', async () => {
+  const { data } = await sb.rpc('dev_staff_list');
+  showActAs(data ?? []);
+});
+
+function showActAs(list) {
+  $('actasError').textContent = '';
+  $('actasId').value = '';
+  const groups = new Map();
+  for (const p of list) {
+    if (!groups.has(p.role)) groups.set(p.role, []);
+    groups.get(p.role).push(p);
+  }
+  $('peopleList').innerHTML = [...groups].map(([role, people]) => `
+    <div class="group-title">${esc(roleName(role))} · access level ${people[0].access_level}</div>
+    <div class="people">${people.map((p) => `
+      <button class="person" data-id="${p.staff_id}"><span class="id">#${p.staff_id}</span>${esc(p.name)}</button>`).join('')}
+    </div>`).join('');
+  $('peopleList').querySelectorAll('.person').forEach((b) => b.addEventListener('click', () => actAs(Number(b.dataset.id))));
+  show('actas');
+}
+
+$('actasForm').addEventListener('submit', (e) => { e.preventDefault(); actAs(Number($('actasId').value)); });
+
+async function actAs(staffId) {
+  $('actasError').textContent = '';
+  const { error } = await sb.from('dev_act_as').upsert({ staff_id: staffId, updated_at: new Date().toISOString() });
+  if (error) { $('actasError').textContent = /foreign key/i.test(error.message) ? `There's no staff member with ID ${staffId}.` : error.message; return; }
+  enterAs();
+}
+
+async function enterAs() {
+  const { data: me, error } = await sb.rpc('school_whoami');
+  if (error || !me) {
+    show('login');
+    $('loginError').textContent = 'This account is not linked to a staff member.';
+    return;
+  }
+  state.me = me;
+  state.tab = me.access_level <= 2 ? (me.access_level === 0 ? 'admin' : 'years') : 'class';
+  $('acting').textContent = `${staffName(me)} · ${roleName(me.role)} (#${me.staff_id})`;
+  $('schoolName').textContent = me.school_name ?? '';
+  show('app');
+  await loadForRole();
+  render();
+}
+
+/* ---------- Data ---------- */
+
+function check(...results) {
+  for (const r of results) if (r.error) { toast(r.error.message, true); throw r.error; }
+}
+
+async function loadForRole() {
+  const lvl = state.me.access_level;
+  if (lvl === 0) {
+    const [schools, roles] = await Promise.all([
+      sb.from('schools').select('school_id, school_short_name, school_name, address').order('school_id'),
+      sb.from('roles').select('role_id, role_1, access_level').order('access_level'),
+    ]);
+    check(schools, roles);
+    state.schools = schools.data;
+    state.roles = roles.data;
+    return;
+  }
+  // Everyone else: whatever the database lets this person see
+  const [pupils, classes, staff] = await Promise.all([
+    sb.from('pupils_with_year')
+      .select('pupil_id, first_name, last_name, date_of_birth, year_offset, dob_year_group, year_group, class_id')
+      .order('last_name').order('first_name'),
+    sb.from('classes')
+      .select('class_id, year_group, class, name, staff_id, ta_staff_id, valid_to')
+      .gt('valid_to', new Date().toISOString())
+      .order('year_group').order('class'),
+    sb.from('staff').select('staff_id, first_name, second_name, salutation, email, roles(role_1, access_level)').order('second_name'),
+  ]);
+  check(pupils, classes, staff);
+  state.pupils = pupils.data;
+  state.classes = classes.data;
+  state.staff = staff.data.map((s) => ({ ...s, role: s.roles?.role_1, level: s.roles?.access_level }));
+  if (!state.classes.some((c) => c.year_group === state.classYear) && state.classes.length) state.classYear = state.classes[0].year_group;
+  if (!state.classes.some((c) => c.class_id === state.regClass)) state.regClass = state.classes[0]?.class_id ?? null;
+  await loadAttendance();
+}
+
+async function loadAttendance() {
+  if (state.me.access_level === 0 || state.me.access_level === 5) { state.attendance = []; return; }
+  const r = await sb.from('attendance').select('pupil_id, status').eq('date', state.regDate).eq('session', state.regSession);
+  check(r);
+  state.attendance = r.data;
+}
+
+async function save(promise) {
+  const { error } = await promise;
+  if (error) {
+    toast(error.message, true);
+    await loadForRole();
+    render();
+    return false;
+  }
+  return true;
+}
+
+/* ---------- Setup actions (heads and deputies) ---------- */
+
+async function movePupilToYear(pupilId, year) {
+  const p = state.pupils.find((x) => x.pupil_id === pupilId);
+  if (!p || p.year_group === year) return render();
+  const offset = year - p.dob_year_group;
+  const cls = p.class_id ? classById(p.class_id) : null;
+  const classId = cls && cls.year_group === year ? p.class_id : null; // leaving the year means leaving the class
+  Object.assign(p, { year_offset: offset, year_group: year, class_id: classId });
+  render();
+  if (await save(sb.from('pupils').update({ year_offset: offset, class_id: classId }).eq('pupil_id', pupilId))) {
+    toast(`${pupilName(p)} moved to ${yearLabel(year)}` + (cls && !classId ? ' and removed from their class' : ''));
+  }
+}
+
+async function movePupilToClass(pupilId, classId) {
+  const p = state.pupils.find((x) => x.pupil_id === pupilId);
+  if (!p || p.class_id === classId) return render();
+  p.class_id = classId;
+  render();
+  await save(sb.from('pupils').update({ class_id: classId }).eq('pupil_id', pupilId));
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+async function randomiseYear(year) {
+  const classes = state.classes.filter((c) => c.year_group === year);
+  const pupils = state.pupils.filter((p) => p.year_group === year);
+  if (!classes.length || !pupils.length) return;
+  if (pupils.some((p) => p.class_id) && !confirm(`Reallocate all ${pupils.length} pupils in ${yearLabel(year)} at random? This replaces the current class lists.`)) return;
+
+  const groups = new Map(classes.map((c) => [c.class_id, []]));
+  const leftOver = [];
+  shuffle(pupils).forEach((p, i) => {
+    const g = groups.get(classes[i % classes.length].class_id);
+    if (g.length < MAX_PER_CLASS) g.push(p.pupil_id); else leftOver.push(p.pupil_id);
+  });
+
+  // Clear first so the 30-per-class limit is never tripped part-way through
+  if (!(await save(sb.from('pupils').update({ class_id: null }).in('pupil_id', pupils.map((p) => p.pupil_id))))) return;
+  for (const [classId, members] of groups) {
+    if (members.length && !(await save(sb.from('pupils').update({ class_id: classId }).in('pupil_id', members)))) return;
+  }
+  for (const p of pupils) p.class_id = null;
+  for (const [classId, members] of groups) for (const id of members) state.pupils.find((p) => p.pupil_id === id).class_id = classId;
+  render();
+  toast(leftOver.length
+    ? `Allocated. ${leftOver.length} pupils didn't fit (max ${MAX_PER_CLASS} per class).`
+    : `${pupils.length} pupils allocated at random.`, leftOver.length > 0);
+}
+
+async function clearYear(year) {
+  const pupils = state.pupils.filter((p) => p.year_group === year && p.class_id);
+  if (!pupils.length) return;
+  if (!confirm(`Take all ${pupils.length} pupils in ${yearLabel(year)} out of their classes?`)) return;
+  if (await save(sb.from('pupils').update({ class_id: null }).in('pupil_id', pupils.map((p) => p.pupil_id)))) {
+    for (const p of pupils) p.class_id = null;
+    render();
+  }
+}
+
+async function assignStaff(staffId, kind, toClassId, fromClassId) {
+  const field = kind === 'teacher' ? 'staff_id' : 'ta_staff_id';
+  const updates = [];
+  if (fromClassId && fromClassId !== toClassId) {
+    classById(fromClassId)[field] = null;
+    updates.push(sb.from('classes').update({ [field]: null }).eq('class_id', fromClassId));
+  }
+  if (toClassId) {
+    classById(toClassId)[field] = staffId; // anyone already there goes back to the list
+    updates.push(sb.from('classes').update({ [field]: staffId }).eq('class_id', toClassId));
+  }
+  render();
+  for (const u of updates) if (!(await save(u))) return;
+}
+
+/* ---------- Register actions (class teachers) ---------- */
+
+async function mark(pupilIds, status) {
+  const rows = pupilIds.map((pupil_id) => ({ pupil_id, date: state.regDate, session: state.regSession, status }));
+  for (const r of rows) {
+    const a = state.attendance.find((x) => x.pupil_id === r.pupil_id);
+    if (a) a.status = status; else state.attendance.push({ pupil_id: r.pupil_id, status });
+  }
+  render();
+  await save(sb.from('attendance').upsert(rows, { onConflict: 'pupil_id,date,session' }));
+}
+
+/* ---------- Rendering ---------- */
+
+function destroySortables() { sortables.forEach((s) => s.destroy()); sortables = []; }
+
+function sortable(el, opts) {
+  sortables.push(Sortable.create(el, {
+    animation: 150, delay: 120, delayOnTouchOnly: true,
+    ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen', sort: false,
+    ...opts,
+  }));
+}
+
+function render() {
+  destroySortables();
+  const lvl = state.me.access_level;
+  if (lvl === 0) return renderAdmin();
+  if (lvl === 1 || lvl === 2) return renderLeadership();
+  if (lvl === 3) return renderKeyStageHead();
+  return renderClassView();
+}
+
+/* LA admin: schools and roles */
+function renderAdmin() {
+  $('app').innerHTML = `
+    <h2>Local authority admin</h2>
+    <p class="hint">Add schools and roles. Pupil, staff and class information is managed by each school.</p>
+    <div class="two-col">
+      <section>
+        <h3>Schools</h3>
+        <form class="add-form" id="addSchool">
+          <input class="field" name="short" placeholder="Short name" required>
+          <input class="field" name="name" placeholder="Full name" required>
+          <input class="field" name="address" placeholder="Address" style="flex-basis:100%">
+          <button class="btn primary" type="submit">Add school</button>
+        </form>
+        <table class="table"><tr><th>ID</th><th>School</th><th>Address</th></tr>
+          ${state.schools.map((s) => `<tr><td>${s.school_id}</td><td><b>${esc(s.school_short_name)}</b><br><span class="hint">${esc(s.school_name)}</span></td><td>${esc(s.address)}</td></tr>`).join('')}
+        </table>
+      </section>
+      <section>
+        <h3>Roles</h3>
+        <form class="add-form" id="addRole">
+          <input class="field" name="role" placeholder="Role name, e.g. senco" required>
+          <input class="field" name="level" type="number" min="0" max="9" placeholder="Access level" required style="max-width:130px">
+          <button class="btn primary" type="submit">Add role</button>
+        </form>
+        <table class="table"><tr><th>ID</th><th>Role</th><th>Access level</th></tr>
+          ${state.roles.map((r) => `<tr><td>${r.role_id}</td><td>${esc(r.role_1)}</td><td>${r.access_level}</td></tr>`).join('')}
+        </table>
+      </section>
+    </div>`;
+
+  $('addSchool').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const row = { school_short_name: f.short.value.trim(), school_name: f.name.value.trim(), address: f.address.value.trim() || null };
+    const { data, error } = await sb.from('schools').insert(row).select().single();
+    if (error) return toast(error.message, true);
+    state.schools.push(data);
+    toast(`${row.school_short_name} added`);
+    renderAdmin();
+  });
+  $('addRole').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    const row = { role_1: f.role.value.trim().toLowerCase().replace(/\s+/g, '_'), access_level: Number(f.level.value) };
+    const { data, error } = await sb.from('roles').insert(row).select().single();
+    if (error) return toast(error.message, true);
+    state.roles.push(data);
+    state.roles.sort((a, b) => a.access_level - b.access_level);
+    toast(`${row.role_1} added`);
+    renderAdmin();
+  });
+}
+
+/* Heads and deputies */
+function renderLeadership() {
+  const tabs = [['years', 'Year groups'], ['classes', 'Classes'], ['staff', 'Teachers & TAs'], ['people', 'Staff'], ['registers', 'Registers']];
+  const inClass = state.pupils.filter((p) => p.class_id).length;
+  const n = state.classes.length;
+  const item = (label, a, b) => `<span class="${a === b ? 'done' : ''}">${label} <b>${a}/${b}</b></span>`;
+  $('app').innerHTML = `
+    <nav class="steps">${tabs.map(([k, l], i) => `<button class="step ${state.tab === k ? 'active' : ''}" data-tab="${k}">${i < 3 ? `<span class="n">${i + 1}</span>` : ''}${l}</button>`).join('')}</nav>
+    <div class="summary">
+      ${item('Pupils in a class', inClass, state.pupils.length)}
+      ${item('Classes with a teacher', state.classes.filter((c) => c.staff_id).length, n)}
+      ${item('Classes with a TA', state.classes.filter((c) => c.ta_staff_id).length, n)}
+    </div>
+    <div id="view"></div>`;
+  $('app').querySelectorAll('.step').forEach((b) => b.addEventListener('click', () => { state.tab = b.dataset.tab; render(); }));
+  ({ years: renderYears, classes: renderClasses, staff: renderStaffAssign, people: renderPeople, registers: renderRegisters })[state.tab]();
+}
+
+function pupilCard(p, { showClass = false } = {}) {
+  const tags = [];
+  if (p.year_offset < 0) tags.push(`<span class="tag amber">held back ${-p.year_offset}</span>`);
+  if (p.year_offset > 0) tags.push(`<span class="tag amber">moved up ${p.year_offset}</span>`);
+  const cls = p.class_id ? classById(p.class_id) : null;
+  if (showClass && cls) tags.push(`<span class="tag green">${esc(cls.name)}</span>`);
+  if (cls && cls.year_group !== p.year_group) tags.push(`<span class="tag red">class is ${yearLabel(cls.year_group)}</span>`);
+  return `<div class="card" data-id="${p.pupil_id}">
+    <div class="name">${esc(pupilName(p))}</div>
+    <div class="meta"><span>${fmtDate(p.date_of_birth)}</span>${tags.join('')}</div>
+  </div>`;
+}
+
+function renderYears() {
+  const other = state.pupils.filter((p) => !YEARS.includes(p.year_group));
+  const cols = YEARS.map((y) => {
+    const ps = state.pupils.filter((p) => p.year_group === y);
+    return `<div class="col">
+      <div class="col-head"><h3>${yearLabel(y)}</h3><span class="count">${ps.length}</span></div>
+      <div class="list" data-year="${y}">${ps.map((p) => pupilCard(p, { showClass: true })).join('')}</div>
+    </div>`;
+  });
+  if (other.length) {
+    cols.push(`<div class="col muted">
+      <div class="col-head"><h3>Outside primary age</h3><span class="count">${other.length}</span></div>
+      <div class="list" data-year="other">${other.map((p) => pupilCard(p)).join('')}</div>
+    </div>`);
+  }
+  $('view').innerHTML = `
+    <p class="hint">Each pupil starts in the year their date of birth gives them. Drag a pupil to another year to hold them back or move them up.</p>
+    <div class="board years-board" style="--cols:${cols.length}">${cols.join('')}</div>`;
+
+  document.querySelectorAll('.years-board .list').forEach((el) => sortable(el, {
+    group: { name: 'years', put: (to) => to.el.dataset.year !== 'other' },
+    onEnd: (e) => { if (e.from !== e.to) movePupilToYear(Number(e.item.dataset.id), Number(e.to.dataset.year)); },
+  }));
+}
+
+function renderClasses() {
+  const years = [...new Set(state.classes.map((c) => c.year_group))].sort((a, b) => a - b);
+  const y = state.classYear;
+  const classes = state.classes.filter((c) => c.year_group === y);
+  const classIds = new Set(classes.map((c) => c.class_id));
+  const unassigned = state.pupils.filter((p) => p.year_group === y && !classIds.has(p.class_id));
+
+  const pills = years.map((yy) => {
+    const total = state.pupils.filter((p) => p.year_group === yy).length;
+    const placed = state.pupils.filter((p) => p.year_group === yy && p.class_id && classById(p.class_id)?.year_group === yy).length;
+    return `<button class="pill ${yy === y ? 'active' : ''}" data-year="${yy}">${yearLabel(yy)} <span style="opacity:.7">${placed}/${total}</span></button>`;
+  }).join('');
+
+  const classCols = classes.map((c) => {
+    const ps = state.pupils.filter((p) => p.class_id === c.class_id);
+    const t = staffById(c.staff_id);
+    return `<div class="col">
+      <div class="col-head"><h3>${esc(c.name)}</h3><span class="sub">${classLabel(c)}${t ? ' · ' + esc(staffName(t)) : ''}</span>
+        <span class="count ${ps.length >= MAX_PER_CLASS ? 'full' : ''}">${ps.length}/${MAX_PER_CLASS}</span></div>
+      <div class="list" data-class="${c.class_id}">${ps.map((p) => pupilCard(p)).join('')}</div>
+    </div>`;
+  }).join('');
+
+  $('view').innerHTML = `
+    <div class="toolbar">${pills}<span class="spacer"></span>
+      <button class="btn small" id="clearYear">Clear classes</button>
+      <button class="btn small primary" id="randomise">Randomly allocate</button>
+    </div>
+    <p class="hint">Drag pupils between the lists, or randomly allocate the whole year and then swap pupils by hand. Up to ${MAX_PER_CLASS} per class.</p>
+    <div class="board" style="grid-template-columns: repeat(${classes.length + 1}, minmax(200px, 1fr))">
+      <div class="col muted">
+        <div class="col-head"><h3>Not in a class</h3><span class="count">${unassigned.length}</span></div>
+        <div class="list" data-class="">${unassigned.map((p) => pupilCard(p)).join('')}</div>
+      </div>
+      ${classCols}
+    </div>`;
+
+  document.querySelectorAll('.toolbar .pill').forEach((b) => b.addEventListener('click', () => { state.classYear = Number(b.dataset.year); render(); }));
+  $('randomise').addEventListener('click', () => randomiseYear(y));
+  $('clearYear').addEventListener('click', () => clearYear(y));
+
+  document.querySelectorAll('#view .list[data-class]').forEach((el) => sortable(el, {
+    group: { name: 'classes', put: (to) => to.el.dataset.class === '' || to.el.querySelectorAll('.card').length < MAX_PER_CLASS },
+    onEnd: (e) => {
+      if (e.from === e.to) return;
+      movePupilToClass(Number(e.item.dataset.id), e.to.dataset.class ? Number(e.to.dataset.class) : null);
+    },
+  }));
+}
+
+function staffCard(s) {
+  const note = s.role === 'head_of_key_stage' || s.role === 'deputy_headteacher' ? roleName(s.role) : '';
+  return `<div class="card" data-id="${s.staff_id}">
+    <div class="name">${esc(staffName(s))}</div>
+    <div class="meta"><span>${esc(s.first_name)}</span>${note ? `<span class="tag green">${note}</span>` : ''}</div>
+  </div>`;
+}
+
+function renderStaffAssign() {
+  const usedT = new Set(state.classes.map((c) => c.staff_id).filter(Boolean));
+  const usedTA = new Set(state.classes.map((c) => c.ta_staff_id).filter(Boolean));
+  const teachers = state.staff.filter((s) => TEACHER_ROLES.includes(s.role) && !usedT.has(s.staff_id));
+  const tas = state.staff.filter((s) => TA_ROLES.includes(s.role) && !usedTA.has(s.staff_id));
+
+  const slot = (c, kind) => {
+    const id = kind === 'teacher' ? c.staff_id : c.ta_staff_id;
+    const s = id ? staffById(id) : null;
+    const ph = kind === 'teacher' ? 'Drop a teacher here' : 'Drop a TA here';
+    return `<div class="slot" data-kind="${kind}" data-class="${c.class_id}" data-placeholder="${ph}">${s ? staffCard(s) : ''}</div>`;
+  };
+
+  $('view').innerHTML = `
+    <p class="hint">Drag a teacher and a teaching assistant onto each class. Dropping someone onto a filled slot sends the previous person back to the list; drag a person back to the list to remove them.</p>
+    <div class="staff-layout">
+      <div class="pools">
+        <div class="col pool"><div class="col-head"><h3>Teachers</h3><span class="count">${teachers.length}</span></div>
+          <div class="list" data-kind="teacher" data-pool="1">${teachers.map(staffCard).join('')}</div></div>
+        <div class="col pool"><div class="col-head"><h3>Teaching assistants</h3><span class="count">${tas.length}</span></div>
+          <div class="list" data-kind="ta" data-pool="1">${tas.map(staffCard).join('')}</div></div>
+      </div>
+      <div class="class-grid">${state.classes.map((c) => `
+        <div class="class-card">
+          <h4>${esc(c.name)} <span class="sub">${classLabel(c)} · ${yearLabel(c.year_group)}</span></h4>
+          <div class="slot-label">Teacher</div>${slot(c, 'teacher')}
+          <div class="slot-label">Teaching assistant</div>${slot(c, 'ta')}
+        </div>`).join('')}
+      </div>
+    </div>`;
+
+  document.querySelectorAll('.staff-layout [data-kind]').forEach((el) => sortable(el, {
+    group: el.dataset.kind, // teachers only go in teacher slots, TAs only in TA slots
+    onEnd: (e) => {
+      if (e.from === e.to) return;
+      assignStaff(Number(e.item.dataset.id), e.to.dataset.kind,
+        e.to.dataset.pool ? null : Number(e.to.dataset.class),
+        e.from.dataset.pool ? null : Number(e.from.dataset.class));
+    },
+  }));
+}
+
+function renderPeople() {
+  const people = state.staff.filter((s) => s.staff_id !== state.me.staff_id).sort((a, b) => a.level - b.level || a.second_name.localeCompare(b.second_name));
+  const classOf = (s) => state.classes.filter((c) => c.staff_id === s.staff_id || c.ta_staff_id === s.staff_id).map((c) => c.name).join(', ');
+  $('view').innerHTML = `
+    <p class="hint">Staff you can see: everyone with a higher access-level number than you.</p>
+    <table class="table"><tr><th>ID</th><th>Name</th><th>Role</th><th>Class</th><th>Email</th></tr>
+      ${people.map((s) => `<tr><td>${s.staff_id}</td><td>${esc(staffName(s))} <span class="hint">${esc(s.first_name)}</span></td>
+        <td>${esc(roleName(s.role))}</td><td>${esc(classOf(s))}</td><td>${esc(s.email)}</td></tr>`).join('')}
+    </table>`;
+}
+
+function registerControls(classes) {
+  return `<div class="reg-head">
+    ${classes.length > 1 ? `<select class="field" id="regClass">${classes.map((c) => `<option value="${c.class_id}" ${c.class_id === state.regClass ? 'selected' : ''}>${esc(c.name)} (${classLabel(c)})</option>`).join('')}</select>` : ''}
+    <input class="field" type="date" id="regDate" value="${state.regDate}">
+    <div class="seg"><button data-s="AM" class="${state.regSession === 'AM' ? 'on' : ''}">AM</button><button data-s="PM" class="${state.regSession === 'PM' ? 'on' : ''}">PM</button></div>
+  </div>`;
+}
+
+function bindRegisterControls() {
+  $('regClass')?.addEventListener('change', (e) => { state.regClass = Number(e.target.value); render(); });
+  $('regDate').addEventListener('change', async (e) => { state.regDate = e.target.value; await loadAttendance(); render(); });
+  document.querySelectorAll('.seg button').forEach((b) => b.addEventListener('click', async () => { state.regSession = b.dataset.s; await loadAttendance(); render(); }));
+}
+
+function statusOf(pupilId) { return state.attendance.find((a) => a.pupil_id === pupilId)?.status ?? null; }
+const STATUS_LABEL = { present: 'Present', late: 'Late', absent: 'Absent' };
+
+function registerTable(pupils, editable) {
+  if (!pupils.length) return `<div class="empty">No pupils in this class yet.</div>`;
+  const counts = { present: 0, late: 0, absent: 0, none: 0 };
+  for (const p of pupils) counts[statusOf(p.pupil_id) ?? 'none']++;
+  return `
+    <div class="summary">
+      <span>Present <b>${counts.present}</b></span><span>Late <b>${counts.late}</b></span>
+      <span>Absent <b>${counts.absent}</b></span><span>Not marked <b>${counts.none}</b></span>
+    </div>
+    <table class="table">${pupils.map((p) => {
+      const s = statusOf(p.pupil_id);
+      return `<tr class="reg-row"><td>${esc(pupilName(p))}</td><td>${editable
+        ? ['present', 'late', 'absent'].map((k) => `<button class="mark ${k} ${s === k ? 'on' : ''}" data-id="${p.pupil_id}" data-k="${k}">${STATUS_LABEL[k]}</button>`).join('')
+        : `<span class="status ${s ?? 'none'}">${s ? STATUS_LABEL[s] : 'Not marked'}</span>`}</td></tr>`;
+    }).join('')}</table>`;
+}
+
+function renderRegisters() {
+  const c = classById(state.regClass);
+  const pupils = c ? state.pupils.filter((p) => p.class_id === c.class_id) : [];
+  $('view').innerHTML = `
+    <p class="hint">Registers are taken by class teachers. You can view them here.</p>
+    ${registerControls(state.classes)}
+    ${registerTable(pupils, false)}`;
+  bindRegisterControls();
+}
+
+/* Heads of key stage — not specified yet */
+function renderKeyStageHead() {
+  $('app').innerHTML = `<div class="empty">Heads of key stage don't have a view yet.</div>`;
+}
+
+/* Teachers (take register) and TAs (view only) */
+function renderClassView() {
+  const isTeacher = state.me.access_level === 4;
+  const mine = state.classes; // the database only returns this person's class(es)
+  if (!mine.length) {
+    $('app').innerHTML = `<div class="empty">You haven't been given a class yet.</div>`;
+    return;
+  }
+  const c = classById(state.regClass) ?? mine[0];
+  const pupils = state.pupils.filter((p) => p.class_id === c.class_id);
+  const teacher = staffById(c.staff_id);
+  const ta = staffById(c.ta_staff_id);
+  const head = `<h2>${esc(c.name)} <span class="hint">${classLabel(c)} · ${yearLabel(c.year_group)}</span></h2>
+    <p class="hint">Teacher: ${teacher ? esc(staffName(teacher)) : '—'} · TA: ${ta ? esc(staffName(ta)) : '—'} · ${pupils.length} pupils</p>`;
+
+  if (!isTeacher) {
+    $('app').innerHTML = head + (pupils.length ? `
+      <table class="table"><tr><th>Pupil</th><th>Date of birth</th></tr>
+        ${pupils.map((p) => `<tr><td>${esc(pupilName(p))}</td><td>${fmtDate(p.date_of_birth)}</td></tr>`).join('')}
+      </table>` : `<div class="empty">No pupils in this class yet.</div>`);
+    return;
+  }
+
+  const unmarked = pupils.filter((p) => !statusOf(p.pupil_id)).map((p) => p.pupil_id);
+  $('app').innerHTML = `${head}
+    <h3>Register</h3>
+    ${registerControls(mine)}
+    ${unmarked.length ? `<p><button class="btn primary small" id="allPresent">Mark ${unmarked.length} unmarked as present</button></p>` : ''}
+    ${registerTable(pupils, true)}`;
+  bindRegisterControls();
+  $('allPresent')?.addEventListener('click', () => mark(unmarked, 'present'));
+  document.querySelectorAll('.mark').forEach((b) => b.addEventListener('click', () => mark([Number(b.dataset.id)], b.dataset.k)));
+}
+
+start();
+</script>
+</body>
+</html>
