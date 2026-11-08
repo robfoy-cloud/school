@@ -16,6 +16,12 @@ Prototype schools app that ties in with Maths Garden.
 The Worker (`src/worker.js`) needs one secret, `ANTHROPIC_API_KEY`, set in the Cloudflare dashboard.
 It calls Supabase as the signed-in teacher, so row-level security applies to everything it does.
 
+## Releasing a new version
+
+Bump `VERSION` in `public/sw.js` with every release. Open copies of the app then show
+"Version N is ready" with an Update button, and "Success! Updated to version N" afterwards.
+The version button in the top bar shows the current version and checks for updates.
+
 ## Signing in (prototype)
 
 Sign in with a developer account (listed in `school_dev_testers`), then pick any staff ID to act as that person.

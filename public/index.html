@@ -203,6 +203,12 @@
   .bar span.low { background: var(--red); }
   a.btn { text-decoration: none; color: inherit; display: inline-block; }
 
+  .ver { color: var(--muted); font-size: 12px; padding: 4px 10px; }
+  .update-bar { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 30;
+    background: var(--ink); color: #fff; border-radius: 999px; padding: 8px 8px 8px 18px;
+    display: flex; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.2); font-size: 15px; }
+  .update-bar .btn { background: var(--green); border-color: var(--green); color: #fff; }
+
   .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: #fff;
     padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 20; max-width: 90vw; }
   .toast.error { background: var(--red); }
@@ -221,6 +227,7 @@
   <h1>School</h1>
   <span class="school" id="schoolName"></span>
   <span class="spacer"></span>
+  <button class="btn small ver" id="verBtn" title="Check for updates">Version…</button>
   <span class="acting hidden" id="acting"></span>
   <button class="btn small hidden" id="switchStaff">Switch staff</button>
   <button class="btn small hidden" id="signOut">Sign out</button>
@@ -261,6 +268,7 @@
 <main class="hidden" id="app"></main>
 
 <div class="toast hidden" id="toast"></div>
+<div class="update-bar hidden" id="updateBar"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
 <script type="module">
@@ -1815,6 +1823,74 @@ async function printPack(c, h, list) {
     footer();
   });
   doc.save(`${h.title} - ${c.name}.pdf`);
+}
+
+/* ---------- Updates (same pattern as the other apps) ---------- */
+let swReg = null, appVersion = null, waitingWorker = null, waitingVersion = null;
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} };
+
+function askVersion(worker) {
+  return new Promise((res) => {
+    if (!worker) return res(null);
+    const ch = new MessageChannel(), t = setTimeout(() => res(null), 3000);
+    ch.port1.onmessage = (e) => { clearTimeout(t); res(e.data?.version ?? null); };
+    try { worker.postMessage({ type: 'GET_VERSION' }, [ch.port2]); } catch { clearTimeout(t); res(null); }
+  });
+}
+function showVersion() { $('verBtn').textContent = appVersion ? `Version ${appVersion}` : 'Check for updates'; }
+async function offerUpdate(worker) {
+  waitingWorker = worker;
+  waitingVersion = await askVersion(worker);
+  const bar = $('updateBar');
+  bar.innerHTML = `<span>${waitingVersion ? `Version ${waitingVersion} is ready.` : 'A new version is ready.'}</span><button class="btn small" id="doUpdate">Update</button>`;
+  bar.classList.remove('hidden');
+  $('doUpdate').addEventListener('click', applyUpdate);
+}
+function applyUpdate() {
+  if (!waitingWorker) return;
+  lsSet('school.justUpdated', String(waitingVersion || 'new'));
+  $('updateBar').innerHTML = '<span>Updating…</span>';
+  waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+  setTimeout(() => location.reload(), 4000); // in case the switch-over event never arrives
+}
+function watchInstalling(w) {
+  return new Promise((res) => { if (!w || w.state !== 'installing') return res(); w.addEventListener('statechange', () => { if (w.state !== 'installing') res(); }); });
+}
+async function checkForUpdate(manual) {
+  if (!swReg) { if (manual) toast('Updates work when the app is opened from its web address.'); return; }
+  if (manual) { $('verBtn').disabled = true; $('verBtn').textContent = 'Checking…'; }
+  try { await swReg.update(); } catch { if (manual) toast("Couldn't check for updates. Are you online?", true); }
+  await watchInstalling(swReg.installing);
+  if (manual) { $('verBtn').disabled = false; showVersion(); }
+  if (swReg.waiting && navigator.serviceWorker.controller) offerUpdate(swReg.waiting);
+  else if (manual) toast(`You're on the latest version${appVersion ? ` (${appVersion})` : ''}.`);
+}
+$('verBtn').addEventListener('click', () => checkForUpdate(true));
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (lsGet('school.justUpdated') && !reloaded) { reloaded = true; location.reload(); }
+  });
+  navigator.serviceWorker.register('/sw.js').then(async (reg) => {
+    swReg = reg;
+    appVersion = await askVersion(navigator.serviceWorker.controller || reg.active || reg.installing);
+    showVersion();
+    if (reg.waiting && navigator.serviceWorker.controller) offerUpdate(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w?.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(w); });
+    });
+  }).catch(() => showVersion());
+  // Home-screen apps resume rather than reload, so check again whenever the app comes back.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkForUpdate(false); });
+} else {
+  showVersion();
+}
+{
+  const v = lsGet('school.justUpdated');
+  if (v) { lsSet('school.justUpdated', null); setTimeout(() => toast(v === 'new' ? 'Success! Updated to the latest version.' : `Success! Updated to version ${v}.`), 600); }
 }
 
 start();
