@@ -450,15 +450,85 @@ async function refreshPhotoUrls() {
   for (const d of data) if (d.signedUrl) photoUrls.set(d.path, d.signedUrl);
 }
 
-const AVATAR_COLOURS = ['#2f6b4f', '#b7791f', '#4a6fa5', '#9b4d6e', '#5b7f3a', '#7a5c99', '#b4423a', '#3d7a7a'];
 function avatar(person, size = 28) {
   const url = person.photo_path && photoUrls.get(person.photo_path);
   if (url) return `<img class="avatar" style="--s:${size}px" src="${esc(url)}" alt="" draggable="false">`;
-  const first = person.first_name ?? '';
-  const last = person.last_name ?? person.second_name ?? '';
-  const initials = ((first[0] ?? '') + (last[0] ?? '')).toUpperCase();
-  const id = person.pupil_id ?? person.staff_id ?? 0;
-  return `<span class="avatar" style="--s:${size}px;background:${AVATAR_COLOURS[id % AVATAR_COLOURS.length]}">${esc(initials)}</span>`;
+  const isPupil = person.pupil_id != null;
+  return `<img class="avatar" style="--s:${size}px" src="${funFace((isPupil ? 'p' : 's') + (person.pupil_id ?? person.staff_id ?? 0), !isPupil)}" alt="" draggable="false">`;
+}
+
+/* ---------- Fun cartoon faces for people without a photo ---------- */
+// Deterministic: the same person always gets the same face.
+const faceCache = new Map();
+function funFace(seed, adult) {
+  const key = seed + (adult ? 'a' : 'c');
+  if (faceCache.has(key)) return faceCache.get(key);
+  let h = 2166136261;
+  for (const ch of key) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  const rnd = () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+
+  const bg = pick(['#cfe8d9', '#f9dfb8', '#d6e2f5', '#f3d3df', '#e3dcf3', '#d8efe9', '#fbe7a6', '#e9e1d2']);
+  const skin = pick(['#f8d9c0', '#f1c7a3', '#e0a87a', '#c68a5c', '#a86b42', '#7d4d2c', '#5c3820']);
+  const hair = pick(['#2b1d14', '#4a2e1b', '#7a4a24', '#b5652b', '#d9a441', '#e8cf8a', '#1e1e1e', ...(adult ? ['#8a8a8a', '#bdbdbd'] : [])]);
+  const style = pick(adult ? ['short', 'side', 'bob', 'bun', 'curly', 'bald', 'long', 'spiky'] : ['short', 'side', 'bob', 'bun', 'curly', 'long', 'spiky', 'pigtails']);
+  const eyes = pick(['dots', 'happy', 'wide', 'dots', 'wink']);
+  const mouth = pick(['smile', 'grin', 'smile', 'tongue', 'open']);
+  const glasses = rnd() < (adult ? 0.35 : 0.12);
+  const freckles = rnd() < 0.25;
+  const blush = rnd() < 0.7;
+  const ink = '#2a2420';
+
+  const hairBack = {
+    bob: `<path d="M14 34 Q12 14 32 12 Q52 14 50 34 L50 44 Q46 46 44 40 L20 40 Q18 46 14 44 Z" fill="${hair}"/>`,
+    long: `<path d="M13 32 Q12 12 32 11 Q52 12 51 32 L52 56 Q44 58 42 46 L22 46 Q20 58 12 56 Z" fill="${hair}"/>`,
+    pigtails: `<circle cx="12" cy="34" r="6" fill="${hair}"/><circle cx="52" cy="34" r="6" fill="${hair}"/>`,
+    bun: `<circle cx="32" cy="9" r="6.5" fill="${hair}"/>`,
+    curly: [14, 20, 27, 34, 41, 47, 50, 14].map((x, i) => `<circle cx="${i === 7 ? 50 : x}" cy="${i === 0 || i === 6 ? 24 : i === 7 ? 24 : 15 + (i % 2) * 2}" r="7" fill="${hair}"/>`).join(''),
+  }[style] || '';
+  const hairFront = {
+    short: `<path d="M17 28 Q17 13 32 13 Q47 13 47 28 Q40 20 32 21 Q24 20 17 28 Z" fill="${hair}"/>`,
+    side: `<path d="M17 29 Q16 13 33 13 Q48 14 47 27 Q38 18 22 24 Q19 26 17 29 Z" fill="${hair}"/>`,
+    bob: `<path d="M17 28 Q18 14 32 14 Q46 14 47 28 Q40 21 32 22 Q24 21 17 28 Z" fill="${hair}"/>`,
+    long: `<path d="M17 28 Q18 14 32 14 Q46 14 47 28 Q42 19 32 20 Q22 19 17 28 Z" fill="${hair}"/>`,
+    bun: `<path d="M17 27 Q18 14 32 14 Q46 14 47 27 Q40 20 32 20 Q24 20 17 27 Z" fill="${hair}"/>`,
+    pigtails: `<path d="M17 28 Q18 14 32 14 Q46 14 47 28 Q40 21 32 21 Q24 21 17 28 Z" fill="${hair}"/>`,
+    curly: `<path d="M18 26 Q20 16 32 16 Q44 16 46 26 Q39 21 32 22 Q25 21 18 26 Z" fill="${hair}"/>`,
+    spiky: `<path d="M17 27 L19 15 L24 20 L27 11 L31 18 L35 10 L38 18 L43 12 L44 20 L48 16 L47 27 Q40 21 32 22 Q24 21 17 27 Z" fill="${hair}"/>`,
+    bald: `<path d="M18 28 Q17 24 19 22 M45 22 Q47 24 46 28" stroke="${hair}" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+  }[style];
+
+  const eyeY = 33;
+  const eyeSvg = {
+    dots: `<circle cx="25" cy="${eyeY}" r="2.4" fill="${ink}"/><circle cx="39" cy="${eyeY}" r="2.4" fill="${ink}"/>`,
+    happy: `<path d="M22 ${eyeY + 1} Q25 ${eyeY - 3} 28 ${eyeY + 1} M36 ${eyeY + 1} Q39 ${eyeY - 3} 42 ${eyeY + 1}" stroke="${ink}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`,
+    wide: `<circle cx="25" cy="${eyeY}" r="3.6" fill="#fff"/><circle cx="39" cy="${eyeY}" r="3.6" fill="#fff"/><circle cx="25.6" cy="${eyeY + 0.4}" r="2" fill="${ink}"/><circle cx="39.6" cy="${eyeY + 0.4}" r="2" fill="${ink}"/>`,
+    wink: `<circle cx="25" cy="${eyeY}" r="2.4" fill="${ink}"/><path d="M36 ${eyeY} Q39 ${eyeY - 2.5} 42 ${eyeY}" stroke="${ink}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`,
+  }[eyes];
+  const mouthSvg = {
+    smile: `<path d="M26 42 Q32 47 38 42" stroke="${ink}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`,
+    grin: `<path d="M25 41 Q32 50 39 41 Z" fill="${ink}"/><path d="M27 42 L37 42 L36.2 43.6 L27.8 43.6 Z" fill="#fff"/>`,
+    tongue: `<path d="M25 41 Q32 50 39 41 Z" fill="${ink}"/><ellipse cx="32" cy="45" rx="3.4" ry="2.2" fill="#e8737a"/>`,
+    open: `<ellipse cx="32" cy="43.5" rx="3.6" ry="3" fill="${ink}"/>`,
+  }[mouth];
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+    <circle cx="32" cy="32" r="32" fill="${bg}"/>
+    ${hairBack}
+    <rect x="27" y="46" width="10" height="8" fill="${skin}"/>
+    <path d="M10 64 Q12 52 32 52 Q52 52 54 64 Z" fill="${pick(['#3d7a5f', '#4a6fa5', '#b4423a', '#e8a33d', '#7a5c99', '#2f4858'])}"/>
+    <ellipse cx="16" cy="34" rx="3" ry="4" fill="${skin}"/><ellipse cx="48" cy="34" rx="3" ry="4" fill="${skin}"/>
+    <ellipse cx="32" cy="32" rx="15.5" ry="17" fill="${skin}"/>
+    ${hairFront}
+    ${blush ? `<circle cx="21.5" cy="39" r="2.6" fill="#f08a7a" opacity=".35"/><circle cx="42.5" cy="39" r="2.6" fill="#f08a7a" opacity=".35"/>` : ''}
+    ${freckles ? [[22, 37], [24.5, 38.5], [20.5, 39.5], [42, 37], [39.5, 38.5], [43.5, 39.5]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r=".7" fill="#9a5b3c" opacity=".6"/>`).join('') : ''}
+    ${eyeSvg}
+    ${glasses ? `<g stroke="${ink}" stroke-width="1.5" fill="none"><circle cx="25" cy="${eyeY}" r="5"/><circle cx="39" cy="${eyeY}" r="5"/><path d="M30 ${eyeY} L34 ${eyeY}"/></g>` : ''}
+    ${mouthSvg}
+  </svg>`;
+  const uri = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg.replace(/\s+/g, ' '));
+  faceCache.set(key, uri);
+  return uri;
 }
 
 // Square-crop and shrink on the device before uploading
