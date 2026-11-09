@@ -1,11 +1,12 @@
 // Service worker: keeps the app shell so new versions only switch over when the user taps Update.
 // Bump VERSION with every release.
-const VERSION = 3;
+const VERSION = 4;
 const CACHE = `school-v${VERSION}`;
 // Only exact URLs Cloudflare serves without a redirect ("/index.html" redirects to "/").
 const SHELL = ['/', '/icon.svg', '/icon-192.png', '/apple-touch-icon.png', '/manifest.webmanifest'];
-// Versions 1–2 could break page loads on Safari; take over from them straight away.
-const REPLACE_BROKEN = true;
+// Versions 1–2 could break page loads on Safari; version 3 took over from them straight away.
+// From version 4, new versions wait for the user to tap Update again.
+const REPLACE_BROKEN = false;
 
 // Never store a redirected response: browsers refuse to use one for a page load.
 async function cleanCopy(res) {

@@ -150,6 +150,12 @@
   .seg button { border: 0; background: none; padding: 7px 14px; }
   .seg button.on { background: var(--ink); color: #fff; }
   .reg-row td:last-child { text-align: right; white-space: nowrap; }
+  .reasons { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 8px; white-space: normal; }
+  .reason { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 4px 11px; font-size: 13px; }
+  .reason.on { background: var(--red-soft); border-color: var(--red); color: var(--red); font-weight: 600; }
+  .reason-note { width: 220px; padding: 6px 10px; font-size: 14px; }
+  .reason-label { font-size: 13px; color: var(--red); margin-left: 6px; }
+  .reason-label.unknown { color: var(--muted); font-style: italic; }
   .mark { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 12px; margin-left: 4px; min-width: 84px; }
   .mark.on.present { background: var(--green); border-color: var(--green); color: #fff; }
   .mark.on.late { background: var(--amber); border-color: var(--amber); color: #fff; }
@@ -604,7 +610,7 @@ async function setPhoto(kind, id, file) {
 
 async function loadAttendance() {
   if (state.me.access_level === 0 || state.me.access_level === 5) { state.attendance = []; return; }
-  const r = await sb.from('attendance').select('pupil_id, status').eq('date', state.regDate).eq('session', state.regSession);
+  const r = await sb.from('attendance').select('pupil_id, status, absence_reason, absence_note').eq('date', state.regDate).eq('session', state.regSession);
   check(r);
   state.attendance = r.data;
 }
@@ -703,13 +709,31 @@ async function assignStaff(staffId, kind, toClassId, fromClassId) {
 /* ---------- Register actions (class teachers) ---------- */
 
 async function mark(pupilIds, status) {
-  const rows = pupilIds.map((pupil_id) => ({ pupil_id, date: state.regDate, session: state.regSession, status }));
+  const rows = pupilIds.map((pupil_id) => {
+    const prev = state.attendance.find((x) => x.pupil_id === pupil_id);
+    // Absences start as "unknown" until a reason is chosen; other marks clear the reason
+    const keep = status === 'absent' && prev?.status === 'absent';
+    return { pupil_id, date: state.regDate, session: state.regSession, status,
+      absence_reason: status === 'absent' ? (keep ? prev.absence_reason : 'unknown') : null,
+      absence_note: keep ? prev.absence_note ?? null : null };
+  });
   for (const r of rows) {
     const a = state.attendance.find((x) => x.pupil_id === r.pupil_id);
-    if (a) a.status = status; else state.attendance.push({ pupil_id: r.pupil_id, status });
+    if (a) Object.assign(a, r); else state.attendance.push({ ...r });
   }
   render();
   await save(sb.from('attendance').upsert(rows, { onConflict: 'pupil_id,date,session' }));
+}
+
+async function setAbsenceReason(pupilId, reason, note) {
+  const a = state.attendance.find((x) => x.pupil_id === pupilId);
+  if (!a || a.status !== 'absent') return;
+  a.absence_reason = reason;
+  a.absence_note = reason === 'other' ? (note ?? a.absence_note ?? '').slice(0, 200) || null : null;
+  render();
+  if (reason === 'other' && note === undefined) document.querySelector(`.reason-note[data-id="${pupilId}"]`)?.focus();
+  await save(sb.from('attendance').update({ absence_reason: a.absence_reason, absence_note: a.absence_note })
+    .eq('pupil_id', pupilId).eq('date', state.regDate).eq('session', state.regSession));
 }
 
 /* ---------- Rendering ---------- */
@@ -1209,6 +1233,21 @@ function bindRegisterControls() {
 
 function statusOf(pupilId) { return state.attendance.find((a) => a.pupil_id === pupilId)?.status ?? null; }
 const STATUS_LABEL = { present: 'Present', late: 'Late', absent: 'Absent' };
+const REASONS = { sickness: 'Sickness', appointment: 'Appointment', unknown: 'Unknown', other: 'Other' };
+
+function reasonPicker(pupilId, a) {
+  const r = a?.absence_reason || 'unknown';
+  return `<div class="reasons">
+    <span class="hint">Reason:</span>
+    ${Object.entries(REASONS).map(([k, l]) => `<button class="reason ${r === k ? 'on' : ''}" data-id="${pupilId}" data-r="${k}">${l}</button>`).join('')}
+    ${r === 'other' ? `<input class="field reason-note" data-id="${pupilId}" maxlength="200" placeholder="Type the reason" value="${esc(a?.absence_note || '')}">` : ''}
+  </div>`;
+}
+function reasonText(a) {
+  const r = a?.absence_reason || 'unknown';
+  const label = r === 'other' && a?.absence_note ? `Other: ${a.absence_note}` : REASONS[r];
+  return ` <span class="reason-label ${r === 'unknown' ? 'unknown' : ''}">${esc(label)}</span>`;
+}
 
 function registerTable(pupils, editable) {
   if (!pupils.length) return `<div class="empty">No pupils in this class yet.</div>`;
@@ -1221,9 +1260,11 @@ function registerTable(pupils, editable) {
     </div>
     <table class="table">${pupils.map((p) => {
       const s = statusOf(p.pupil_id);
+      const a = state.attendance.find((x) => x.pupil_id === p.pupil_id);
+      const reason = s === 'absent' ? (editable ? reasonPicker(p.pupil_id, a) : reasonText(a)) : '';
       return `<tr class="reg-row"><td><span class="who-cell">${avatar(p, 34)}${esc(pupilName(p))}</span></td><td>${editable
         ? ['present', 'late', 'absent'].map((k) => `<button class="mark ${k} ${s === k ? 'on' : ''}" data-id="${p.pupil_id}" data-k="${k}">${STATUS_LABEL[k]}</button>`).join('')
-        : `<span class="status ${s ?? 'none'}">${s ? STATUS_LABEL[s] : 'Not marked'}</span>`}</td></tr>`;
+        : `<span class="status ${s ?? 'none'}">${s ? STATUS_LABEL[s] : 'Not marked'}</span>`}${reason}</td></tr>`;
     }).join('')}</table>`;
 }
 
@@ -1289,6 +1330,15 @@ function renderClassView() {
   bindRegisterControls();
   $('allPresent')?.addEventListener('click', () => mark(unmarked, 'present'));
   document.querySelectorAll('.mark').forEach((b) => b.addEventListener('click', () => mark([Number(b.dataset.id)], b.dataset.k)));
+  document.querySelectorAll('.reason').forEach((b) => b.addEventListener('click', () => setAbsenceReason(Number(b.dataset.id), b.dataset.r)));
+  document.querySelectorAll('.reason-note').forEach((inp) => {
+    const commit = () => {
+      const a = state.attendance.find((x) => x.pupil_id === Number(inp.dataset.id));
+      if ((a?.absence_note || '') !== inp.value.trim()) setAbsenceReason(Number(inp.dataset.id), 'other', inp.value.trim());
+    };
+    inp.addEventListener('change', commit);
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+  });
 }
 
 /* ======================= Homework (class teachers) ======================= */
